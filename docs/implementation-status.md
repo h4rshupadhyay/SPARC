@@ -16,7 +16,7 @@ commits exist.
 | C6 Availability | C6a-C6d | verified |
 | C7 GUI | C7a-C7e | verified |
 | C8 Demonstration and baseline | C8a-C8c | verified |
-| A1 Sensitivity analysis | A1a-A1c | pending |
+| A1 Sensitivity analysis | A1a-A1c | verified |
 | A2 Local benchmarks and exports | A2a-A2e | pending |
 | A3 Network and resource analysis | A3a-A3d | pending |
 | T1 Capture normalization | T1a-T1d | pending |
@@ -61,12 +61,12 @@ commits exist.
 | C7c | verified | Full C7 gate: 540 passed; delivery reconciliation, bounded in-memory history, inspector and close cleanup pass | 0a6c0d4 |
 | C7d | verified | Full C7 gate: 540 passed; stable-prefix snapshots, cancellation and checkpoint publication pass | 0a6c0d4 |
 | C7e | verified | Full C7 gate: 540 passed; lazy CLI launch, actionable Tk setup and platform guide pass | 0a6c0d4 |
-| C8a | verified | Independent-process simulation; fresh core gate 526 passed in 95.93s; Sol fixes/re-review passed; actual retained evidence under .demo/c8-evidence | pending C8 commit |
-| C8b | verified | Separate lab-only baseline; simulation/baseline focused 40 passed in 7.20s; secure runtime remains isolated | pending C8 commit |
-| C8c | verified | All five goals and thirteen criteria mapped; copy-only audit/tamper example executed; links and bounded demo recipes checked | pending C8 commit |
-| A1a | pending | Pending | pending |
-| A1b | pending | Pending | pending |
-| A1c | pending | Pending | pending |
+| C8a | verified | Independent-process simulation; fresh core gate 526 passed in 95.93s; Sol fixes/re-review passed; actual retained evidence under .demo/c8-evidence | d1189c3 |
+| C8b | verified | Separate lab-only baseline; simulation/baseline focused 40 passed in 7.20s; secure runtime remains isolated | d1189c3 |
+| C8c | verified | All five goals and thirteen criteria mapped; copy-only audit/tamper example executed; links and bounded demo recipes checked | d1189c3 |
+| A1a | verified | A1 gate 62 passed; Sol review large-seed fix verified RED to GREEN | uncommitted |
+| A1b | verified | A1 gate 62 passed; Sol review large-seed fix verified RED to GREEN | uncommitted |
+| A1c | verified | A1 gate 62 passed; Sol review large-seed fix verified RED to GREEN | uncommitted |
 | A2a | pending | Pending | pending |
 | A2b | pending | Pending | pending |
 | A2c | pending | Pending | pending |
@@ -93,3 +93,5 @@ commits exist.
 C1-C6 Sol spec/quality reviews passed. C7 controller gate: 540 passed in 95.55s without warnings; focused layout checks: 3 passed in 0.79s. Sol's C7 re-review passed. Controller also completed a real single-process localhost GUI smoke with bidirectional Unicode/newline messages, audit operations, resizing, and close during work; direct-window captures confirmed approval controls, audit actions/head wrapping, and chat security details were reachable. This evidence covers the local GUI path only; Windows and physical-device behavior remain unverified and belong to later validation. C7 committed as `0a6c0d4`.
 
 C8 controller gate: 526 unit/integration tests passed in 95.93s without warnings on the corrected runtime. Simulation/baseline focus: 40 passed in 7.20s. Sol scoped re-review passed after terminal-state barrier and nonzero child-exit corrections. Actual local independent-process report and separately retained public audit evidence are under `.demo/c8-evidence/`; copy-only tail-removal/signature-tamper checks passed. Physical devices, Windows, packet captures, and analysis measurements remain unverified/pending.
+
+A1: reproducible public AES laboratory verified; 62 sensitivity tests passed. Sol reviewed formulas, baseline-once, cancellation and schema; arbitrary-size seed regression fixed with local decimal chunks. A2a statistics: 15 passed. A2/A3 remain in progress/pending; no new physical-device evidence.

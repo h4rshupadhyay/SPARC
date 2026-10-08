@@ -4,6 +4,8 @@
 
 ### Added
 
+- Reproducible synthetic AES-256 sensitivity trials and bounded 50-case batches with separate bit, byte and hexadecimal metrics and cancellable partial results.
+
 - Initial SPARC package structure and shared immutable model records.
 - Persistent Ed25519 identities and explicit remembered-peer trust.
 - Bounded TCP framing and signed AES-256-GCM text records with directional keys, replay checks and public inspection details.
