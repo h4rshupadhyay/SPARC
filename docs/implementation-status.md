@@ -11,7 +11,7 @@ commits exist.
 | C1 Shared types, encoding, identity and trust | C1a-C1d | verified |
 | C2 Protocol and cryptography | C2a-C2f | verified |
 | C3 Handshake | C3a-C3d | verified |
-| C4 Audit | C4a-C4d | pending |
+| C4 Audit | C4a-C4d | verified |
 | C5 Peer service | C5a-C5g | pending |
 | C6 Availability | C6a-C6d | pending |
 | C7 GUI | C7a-C7e | pending |
@@ -37,14 +37,14 @@ commits exist.
 | C2d | verified | finished/crypto/messages/framing: 77 passed | 317b919 |
 | C2e | verified | outbound/finished/crypto/messages/framing: 81 passed | 317b919 |
 | C2f | verified | full unit/integration suite: 172 passed; Sol review and hash timing regression fix passed | 317b919 |
-| C3a | verified | handshake/records/finished/trust: 77 passed | uncommitted |
-| C3b | verified | initiator/helpers/hello/framing: 41 passed; Sol role-boundary ruling approved | uncommitted |
-| C3c | verified | responder/initiator/hello/finished: 54 passed, no warnings | uncommitted |
-| C3d | verified | full unit/integration suite: 219 passed; phase regression fixed, Sol review passed | uncommitted |
-| C4a | pending | Pending | pending |
-| C4b | pending | Pending | pending |
-| C4c | pending | Pending | pending |
-| C4d | pending | Pending | pending |
+| C3a | verified | handshake/records/finished/trust: 77 passed | 2f2e713 |
+| C3b | verified | initiator/helpers/hello/framing: 41 passed; Sol role-boundary ruling approved | 2f2e713 |
+| C3c | verified | responder/initiator/hello/finished: 54 passed, no warnings | 2f2e713 |
+| C3d | verified | full unit/integration suite: 219 passed; phase regression fixed, Sol review passed | 2f2e713 |
+| C4a | verified | audit format/records/encoding: 97 passed; evidence-binding regressions passed | uncommitted |
+| C4b | verified | audit verify/format/encoding: 98 passed | uncommitted |
+| C4c | verified | audit/identity/trust suite: 115 passed | uncommitted |
+| C4d | verified | full unit/integration suite: 330 passed; Sol review passed after report-count fix | uncommitted |
 | C5a | pending | Pending | pending |
 | C5b | pending | Pending | pending |
 | C5c | pending | Pending | pending |
@@ -90,4 +90,4 @@ commits exist.
 
 ## Unresolved decisions
 
-C1-C3 Sol spec/quality reviews passed; full unit/integration suite: 219 passed. No unresolved contract decisions.
+C1-C4 Sol spec/quality reviews passed; full unit/integration suite: 330 passed. C5 contract handoff is being finalized.

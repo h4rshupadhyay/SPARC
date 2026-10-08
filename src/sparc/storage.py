@@ -71,16 +71,24 @@ def _sync_parent_directory(parent: Path) -> None:
         os.close(directory_fd)
 
 
-def atomic_write(path: Path, data: bytes, private: bool = True) -> None:
+def atomic_write(
+    path: Path,
+    data: bytes,
+    private: bool = True,
+    *,
+    secure_parent: bool = True,
+) -> None:
     """Atomically replace a file using a flushed same-directory temporary file."""
     if not isinstance(data, bytes):
         raise TypeError("data must be bytes")
+    if type(secure_parent) is not bool:
+        raise TypeError("secure_parent must be a boolean")
 
     destination = Path(path)
     parent = destination.parent
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     linux = sys.platform.startswith("linux")
-    if linux:
+    if linux and secure_parent:
         os.chmod(parent, 0o700)
 
     descriptor = -1

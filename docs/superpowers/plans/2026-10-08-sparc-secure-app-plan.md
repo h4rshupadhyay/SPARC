@@ -273,9 +273,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `build_audit_record(identity: Identity, body: dict) -> dict`; `verify_audit_record(record: dict, public_key: bytes, expected_previous: str, expected_number: int, expected_log_id: str) -> None`; `verify_peer_evidence(metadata: dict) -> None`; `AuditAppend(record: dict, elapsed_ns: int, encoded_bytes: int)` and `AuditReport(valid: bool, verified_records: int, first_failed_record: int | None, reason: str, checkpoint_checked: bool, elapsed_ns: int)`
 
-- [ ] **Fixed test oracle:** `test_exact_audit_hash_signature_domains`: SHA256 audit domain+canonical body, Ed signature audit-signature domain+hash bytes. `test_peer_evidence_reconstructs_context`: independent C2 signature verifies, edited projection fails. `test_plaintext_or_secret_metadata_rejected`
-- [ ] **Luna implementation:** Exact body/outer fields from spec§5 audit; record 1 starts with previous_hash of 64 zero characters; reject unknown secret/plaintext fields in bounded metadata. Allowed metadata retains public key,sid,direction,sequence,canonical projection,sig; no text. Use the fixed metadata allowlist above; missing or contradictory event data is BLOCKED_CONTRACT, not an invitation to invent fields
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_audit_format.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_exact_audit_hash_signature_domains`: SHA256 audit domain+canonical body, Ed signature audit-signature domain+hash bytes. `test_peer_evidence_reconstructs_context`: independent C2 signature verifies, edited projection fails. `test_plaintext_or_secret_metadata_rejected`
+- [x] **Luna implementation:** Exact body/outer fields from spec§5 audit; record 1 starts with previous_hash of 64 zero characters; reject unknown secret/plaintext fields in bounded metadata. Allowed metadata retains public key,sid,direction,sequence,canonical projection,sig; no text. Use the fixed metadata allowlist above; missing or contradictory event data is BLOCKED_CONTRACT, not an invitation to invent fields
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_audit_format.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** disk I/O or checkpoints.
 
@@ -287,9 +287,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `verify_log(path: Path, public_key: bytes, checkpoint: Path | None = None) -> AuditReport`; checkpoint validation implemented here against C4a fixed schema/domain
 
-- [ ] **Fixed test oracle:** `test_intact_chain_and_first_failure`: exact verified count, modified body/link/hash/sig/owner/logid/number fails at correct index. `test_truncated_final_line_rejected`. `test_missing_log_with_checkpoint_fails`. `test_chain_only_cannot_assert_tail_absence`
-- [ ] **Luna implementation:** Stream line by line validated canonical records against trusted own key, report elapsed nanoseconds and honest chain-only reason. Validate the retained checkpoint signature, log ID, local identity, record number and corresponding hash. Checkpoint-relative tail removal, owner/hash mismatch or missing expected log fails. No truncate/repair/replacement. Treat retained checkpoint request without log as failure
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_audit_verify.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_intact_chain_and_first_failure`: exact verified count, modified body/link/hash/sig/owner/logid/number fails at correct index. `test_truncated_final_line_rejected`. `test_missing_log_with_checkpoint_fails`. `test_chain_only_cannot_assert_tail_absence`
+- [x] **Luna implementation:** Stream line by line validated canonical records against trusted own key, report elapsed nanoseconds and honest chain-only reason. Validate the retained checkpoint signature, log ID, local identity, record number and corresponding hash. Checkpoint-relative tail removal, owner/hash mismatch or missing expected log fails. No truncate/repair/replacement. Treat retained checkpoint request without log as failure
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_audit_verify.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** append or checkpoint export.
 
@@ -301,9 +301,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `AuditLog(data_dir: Path, identity: Identity).append(kind: str, metadata: dict) -> AuditAppend`
 
-- [ ] **Fixed test oracle:** `test_append_flushes_and_fsyncs_before_return`: injected fsync failure raises, no success. `test_corrupt_startup_preserves_bytes`:an existing bad log blocks append. `test_log_contains_no_plaintext_or_private_keys`: known plaintext/private-key specimens are absent. `test_append_measurement_not_stored_fields`: outer keys body/hash/sig only, elapsed and encoded bytes return values
-- [ ] **Luna implementation:** Verify log/last signed checkpoint before append; create fresh log id only when absent without retained checkpoint. One append lock serializes head/record number durable flush fsync. Any failure blocks log and fails closed; no automatic repair. Return measurement spans without altering stored schema
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_audit.py tests/unit/test_audit_verify.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_append_flushes_and_fsyncs_before_return`: injected fsync failure raises, no success. `test_corrupt_startup_preserves_bytes`:an existing bad log blocks append. `test_log_contains_no_plaintext_or_private_keys`: known plaintext/private-key specimens are absent. `test_append_measurement_not_stored_fields`: outer keys body/hash/sig only, elapsed and encoded bytes return values
+- [x] **Luna implementation:** Verify log/last signed checkpoint before append; create fresh log id only when absent without retained checkpoint. One append lock serializes head/record number durable flush fsync. Any failure blocks log and fails closed; no automatic repair. Return measurement spans without altering stored schema
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_audit.py tests/unit/test_audit_verify.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** receipt or gui logic.
 
@@ -311,13 +311,15 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Files:** Modify `src/sparc/audit.py`; test `tests/unit/test_audit_checkpoint.py`
 
+**Publication allowance:** C4d may extend `storage.atomic_write` with keyword-only `secure_parent=True` and add focused storage-mode tests. Retained stores keep defaults; external selected copies use `secure_parent=False` to preserve existing parent permissions while keeping private files at 0600. Reject checkpoint destinations resolving to the live audit, identity or trust files before publishing either copy. Later CSV/SQLite/PDML exports preserve selected directory permissions too.
+
 **Prerequisites:** C4c.
 
 **Interfaces:** Produce `.export_checkpoint(path: Path) -> None`; consume C4b completed checkpoint validation
 
-- [ ] **Fixed test oracle:** `test_tail_removal_fails_against_checkpoint`: append two records/export independently/remove last→invalid. `test_checkpoint_signature_owner_or_log_id_mismatch_fails`; `test_checkpoint_with_missing_log_fails`; `test_unanchored_tail_removal_is_chain_only`
-- [ ] **Luna implementation:** Use C4a fixed checkpoint schema/domain; signing and export are the only new behavior. Atomically retain latest checkpoint and export selected copy. Never claim complete absence/deletion detection from an unanchored chain
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_audit_checkpoint.py tests/unit/test_audit.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_tail_removal_fails_against_checkpoint`: append two records/export independently/remove last→invalid. `test_checkpoint_signature_owner_or_log_id_mismatch_fails`; `test_checkpoint_with_missing_log_fails`; `test_unanchored_tail_removal_is_chain_only`
+- [x] **Luna implementation:** Use C4a fixed checkpoint schema/domain; signing and export are the only new behavior. Atomically retain latest checkpoint and export selected copy. Never claim complete absence/deletion detection from an unanchored chain
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_audit_checkpoint.py tests/unit/test_audit.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** automatic remote checkpoint service.
 
