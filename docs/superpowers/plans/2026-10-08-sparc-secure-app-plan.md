@@ -581,9 +581,9 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Interfaces:** Produce `run_simulation(data_root: Path, port_a: int = 0, port_b: int = 0, text: str = "SPARC ✓") -> dict`; CLI --data-root/--report
 
-- [ ] **Fixed test oracle:** `test_simulation_is_two_processes_and_two_identities`: differentPIDs/fingerprints/data dirs, actualTCP bothdirections, matchinghashes/receipts and validlogs; reportevidence_mode simulation. `test_child_failure_is_incomplete_and_cleanup_finite`
-- [ ] **Luna implementation:** multiprocessing spawn, knownfingerprints obtained bylabcoordinator andexplicitcomparison beforeapprove. No production trust bypass. Boundcoordinator/childwaits and cleanup. Report genuine elapsed durations/failures, never inventsuccess
-- [ ] **Controller red/green:** `python -m pytest tests/integration/test_simulation.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_simulation_is_two_processes_and_two_identities`: differentPIDs/fingerprints/data dirs, actualTCP bothdirections, matchinghashes/receipts and validlogs; reportevidence_mode simulation. `test_child_failure_is_incomplete_and_cleanup_finite`
+- [x] **Luna implementation:** multiprocessing spawn, knownfingerprints obtained bylabcoordinator andexplicitcomparison beforeapprove. No production trust bypass. Boundcoordinator/childwaits and cleanup. Report genuine elapsed durations/failures, never inventsuccess
+- [x] **Controller red/green:** `python -m pytest tests/integration/test_simulation.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** physical-device verification or packet capture.
 
@@ -595,9 +595,9 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Interfaces:** Produce standalone lab CLI `python scripts/plaintext_baseline.py listen --ip IP --port 47656` and `send --ip IP --port 47656 --text TEXT`; no import into secure runtime
 
-- [ ] **Fixed test oracle:** `test_baseline_wire_contains_synthetic_text`: realTCP receiver reads distinctiveUTF8plaintext. `test_baseline_is_not_secure_runtime_toggle`: secure CLI has no baselineorplaintextfallback flag. InvalidIP/port/textbounded; finitecancel/exit
-- [ ] **Luna implementation:** Independent sender/receiver for syntheticdata on47656, clear lab-only labels, boundedread/write and cleanexit. Reuse parameter validation only; no production session switching
-- [ ] **Controller red/green:** `python -m pytest tests/integration/test_plaintext_baseline.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_baseline_wire_contains_synthetic_text`: realTCP receiver reads distinctiveUTF8plaintext. `test_baseline_is_not_secure_runtime_toggle`: secure CLI has no baselineorplaintextfallback flag. InvalidIP/port/textbounded; finitecancel/exit
+- [x] **Luna implementation:** Independent sender/receiver for syntheticdata on47656, clear lab-only labels, boundedread/write and cleanexit. Reuse parameter validation only; no production session switching
+- [x] **Controller red/green:** `python -m pytest tests/integration/test_plaintext_baseline.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** ARP interception or Wireshark capture privileges.
 
@@ -609,9 +609,9 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Interfaces:** Produce checklist and report outline mapping all13acceptance criteria and5goals to specificartifacts; no applicationAPI
 
-- [ ] **Fixed test oracle:** Controller document review: verify all five named security goals and all 13 acceptance criteria map to concrete artifacts, secure 47655/baseline 47656 capture/display filters and Follow TCP Stream; simulation and physical-device evidence have separate labels. No redundant documentation-mirroring test
-- [ ] **Luna implementation:** Write command recipes, separately retainedcheckpoint/tamper examples, boundedconnection/recordflood tests, abruptloss/restart, expectedpublicobservations and measuredresource/goodput/detection/recoveryfields. LaterA3/T3 addtheir artifacts. Mark actualphysicalWindows/Linuxrun unverified untilperformed; no secretkeys inbundles
-- [ ] **Controller documentation/regression check:** `python -m pytest tests/integration/test_simulation.py tests/integration/test_plaintext_baseline.py -q`; existing runtime assertions PASS, plus the stated content/link/acceptance checklist. No forced red failure for this documentation-only unit.
+- [x] **Fixed test oracle:** Controller document review: verify all five named security goals and all 13 acceptance criteria map to concrete artifacts, secure 47655/baseline 47656 capture/display filters and Follow TCP Stream; simulation and physical-device evidence have separate labels. No redundant documentation-mirroring test
+- [x] **Luna implementation:** Write command recipes, separately retainedcheckpoint/tamper examples, boundedconnection/recordflood tests, abruptloss/restart, expectedpublicobservations and measuredresource/goodput/detection/recoveryfields. LaterA3/T3 addtheir artifacts. Mark actualphysicalWindows/Linuxrun unverified untilperformed; no secretkeys inbundles
+- [x] **Controller documentation/regression check:** `python -m pytest tests/integration/test_simulation.py tests/integration/test_plaintext_baseline.py -q`; existing runtime assertions PASS, plus the stated content/link/acceptance checklist. No forced red failure for this documentation-only unit.
 
 **Exclusions:** fabricated screenshots/captures/performance.
 

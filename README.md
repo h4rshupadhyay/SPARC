@@ -1,20 +1,47 @@
 # SPARC
 
-SPARC is a secure text communication and analysis application. The shared model,
-encoding, local identity, peer trust, and diagnostic command are being built in
-small milestones. The graphical chat interface is added in a later milestone.
+SPARC is a text-only secure communication lab. The current Tkinter app has
+**Connection**, **Chat**, and **Audit** tabs. It supports manually configured
+IPv4/TCP connections, first-contact fingerprint approval, Unicode text, message
+inspection, and signed local audit verification. Analysis and Traffic Analysis
+are future milestones; they are not presented as completed features.
 
-Run the GUI-free local diagnostic with:
+## Install and run
+
+Python 3.10 or newer is required. On Linux:
 
 ```sh
-python -m sparc --check --data-dir ./sparc-data
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+python -m sparc --check --data-dir ./lab/alice
+python -m sparc --data-dir ./lab/alice
 ```
 
-The diagnostic creates or loads an Ed25519 identity in the selected directory,
-then prints installed package versions and the public identity fingerprint. It
-never prints the private key. Keep the data directory private and do not copy it
-into exports or source control.
+On Windows PowerShell:
 
-For normal installation, install the package and development extras with
-`python -m pip install -r requirements-dev.txt`. Core runtime dependencies are
-listed in `requirements.txt`.
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+python -m sparc --check --data-dir .\lab\alice
+python -m sparc --data-dir .\lab\alice
+```
+
+Use a separate data directory for each local instance. Keep those directories
+private: they contain identity material. Never include `identity.json` in an
+evidence bundle. The `--check` command is a GUI-free dependency and identity
+diagnostic. Linux local GUI checks and independent-process simulation have been
+run; an actual Windows installation and Windows-to-Linux session remain
+unverified.
+
+## Demonstrations and evidence
+
+- [Progress-check demo and capture procedure](docs/progress-check-demo.md)
+- [Evidence map, measurement fields, and acceptance checklist](docs/progress-check-evidence.md)
+
+The simulation is explicitly a pair of independent local processes, not a
+physical-device or cross-platform result. The plaintext comparison is a
+separate **LAB ONLY** tool for synthetic text; secure SPARC has no plaintext
+fallback. Current evidence status and limitations are recorded in the linked
+guides.

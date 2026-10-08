@@ -16,6 +16,9 @@
 - Rolling connection limits, paced authenticated records, signed idle heartbeats and finite authenticated reconnection.
 - Runnable Connection, Chat and Audit desktop tabs with explicit fingerprint approval, Unicode and multiline chat, public record inspection, and cancellable checkpoint verification.
 
+- Independent-process secure simulation with observed bidirectional delivery evidence, retained audit checkpoints and honest finite cleanup reports.
+- Separate lab-only plaintext comparison tool and demonstration/evidence guides mapping five security goals and thirteen acceptance criteria.
+
 ### Security
 
 - Shared limits reject invalid policy values at construction.
