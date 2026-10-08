@@ -5,3 +5,16 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 .demo/
+identity.json
+trusted_peers.json
+audit.jsonl
+audit-checkpoint.json
+*.pcap
+*.pcapng
+*.sqlite
+*.db
+*.csv
+*.xml
+*.jsonl
+!tests/fixtures/
+!tests/fixtures/**

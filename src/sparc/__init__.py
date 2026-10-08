@@ -1,0 +1,1 @@
+"""SPARC secure text application."""

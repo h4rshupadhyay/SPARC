@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparc"
+version = "0.1.0.dev0"
+description = "Secure peer-to-peer text communication and analysis tools"
+requires-python = ">=3.10"
+dependencies = [
+    "cryptography==50.0.2",
+    "psutil==7.2.2",
+]
+
+[project.optional-dependencies]
+analysis = ["pycryptodome==3.24.0"]
+traffic = ["pyshark==0.6"]
+dev = ["pytest==8.4.2"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
