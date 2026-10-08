@@ -12,7 +12,7 @@ commits exist.
 | C2 Protocol and cryptography | C2a-C2f | verified |
 | C3 Handshake | C3a-C3d | verified |
 | C4 Audit | C4a-C4d | verified |
-| C5 Peer service | C5a-C5g | pending |
+| C5 Peer service | C5a-C5g | verified |
 | C6 Availability | C6a-C6d | pending |
 | C7 GUI | C7a-C7e | pending |
 | C8 Demonstration and baseline | C8a-C8c | pending |
@@ -41,17 +41,17 @@ commits exist.
 | C3b | verified | initiator/helpers/hello/framing: 41 passed; Sol role-boundary ruling approved | 2f2e713 |
 | C3c | verified | responder/initiator/hello/finished: 54 passed, no warnings | 2f2e713 |
 | C3d | verified | full unit/integration suite: 219 passed; phase regression fixed, Sol review passed | 2f2e713 |
-| C4a | verified | audit format/records/encoding: 97 passed; evidence-binding regressions passed | uncommitted |
-| C4b | verified | audit verify/format/encoding: 98 passed | uncommitted |
-| C4c | verified | audit/identity/trust suite: 115 passed | uncommitted |
-| C4d | verified | full unit/integration suite: 330 passed; Sol review passed after report-count fix | uncommitted |
-| C5a | pending | Pending | pending |
-| C5b | pending | Pending | pending |
-| C5c | pending | Pending | pending |
-| C5d | pending | Pending | pending |
-| C5e | pending | Pending | pending |
-| C5f | pending | Pending | pending |
-| C5g | pending | Pending | pending |
+| C4a | verified | audit format/records/encoding: 97 passed; evidence-binding regressions passed | a8ec46c |
+| C4b | verified | audit verify/format/encoding: 98 passed | a8ec46c |
+| C4c | verified | audit/identity/trust suite: 115 passed | a8ec46c |
+| C4d | verified | full unit/integration suite: 330 passed; Sol review passed after report-count fix | a8ec46c |
+| C5a | verified | full suite: 339 passed; idle-writer wake regression fixed | uncommitted |
+| C5b | verified | full suite: 348 passed; bounded receipt and expiry oracles passed | uncommitted |
+| C5c | verified | full suite: 356 passed; listener and trust snapshot oracles passed | uncommitted |
+| C5d | verified | 37 pairing/listener/trust and 56 handshake/writer tests passed; audit endpoint serialization corrected | uncommitted |
+| C5e | verified | send/writer/receipt suite: 29 passed; stale-owner receipt invalidation regression fixed | uncommitted |
+| C5f | verified | receive/model/record/writer/send suite: 57 passed; signed peer evidence verified | uncommitted |
+| C5g | verified | full suite: 404 passed; Sol review corrections and scoped gate passed | uncommitted |
 | C6a | pending | Pending | pending |
 | C6b | pending | Pending | pending |
 | C6c | pending | Pending | pending |
@@ -90,4 +90,4 @@ commits exist.
 
 ## Unresolved decisions
 
-C1-C4 Sol spec/quality reviews passed; full unit/integration suite: 330 passed. C5 contract handoff is being finalized.
+C1-C4 Sol spec/quality reviews passed; full unit/integration suite: 330 passed. C1-C5 reviews passed. Full suite: 404 passed; C6 availability implementation is next.

@@ -258,3 +258,60 @@ def test_trust_write_failure_blocks_instance_and_fresh_reload_matches_disk(
     else:
         assert fresh.check(old_key, old_endpoint) == "unknown"
     assert fresh.check(new_key, new_endpoint) == ("known" if stage == "directory_sync" and operation == "pin" else "unknown")
+
+
+def test_snapshot_returns_sorted_public_copies_and_tracks_pin_forget(tmp_path):
+    from dataclasses import FrozenInstanceError
+
+    from sparc.identity import TrustStore
+    from sparc.models import Endpoint
+
+    store = TrustStore(tmp_path)
+    key_a, key_b = _key(31), _key(32)
+    endpoint_a = Endpoint("192.0.2.31", 47655)
+    endpoint_b = Endpoint("192.0.2.32", 47655)
+    store.pin(key_b, endpoint_b, label="second")
+    store.pin(key_a, endpoint_a, label="first")
+
+    snapshot = store.snapshot()
+    assert [entry["fingerprint"] for entry in snapshot] == sorted(
+        (_fingerprint(key_a), _fingerprint(key_b))
+    )
+    assert all(set(entry) == {"fingerprint", "label", "endpoint"} for entry in snapshot)
+    assert {entry["endpoint"] for entry in snapshot} == {endpoint_a, endpoint_b}
+    assert {entry["label"] for entry in snapshot} == {"first", "second"}
+    with pytest.raises(FrozenInstanceError):
+        snapshot[0]["endpoint"].port = 1
+
+    snapshot[0]["label"] = "mutated copy"
+    snapshot.append({"fingerprint": "extra"})
+    fresh = store.snapshot()
+    assert len(fresh) == 2
+    assert "mutated copy" not in {entry["label"] for entry in fresh}
+
+    store.forget(_fingerprint(key_a))
+    remaining = store.snapshot()
+    assert remaining == [{
+        "fingerprint": _fingerprint(key_b),
+        "label": "second",
+        "endpoint": endpoint_b,
+    }]
+
+
+def test_snapshot_rejects_poisoned_trust_write(tmp_path, monkeypatch):
+    import sparc.identity as identity
+    from sparc.identity import TrustStore
+    from sparc.models import Endpoint, SparcError
+
+    store = TrustStore(tmp_path)
+
+    def fail_write(*_args, **_kwargs):
+        raise OSError("injected persistence failure")
+
+    monkeypatch.setattr(identity, "atomic_write", fail_write)
+    with pytest.raises(SparcError) as failed_pin:
+        store.pin(_key(33), Endpoint("192.0.2.33", 47655))
+    assert failed_pin.value.code == "trust_write_failed"
+    with pytest.raises(SparcError) as blocked_snapshot:
+        store.snapshot()
+    assert blocked_snapshot.value.code == "trust_write_failed"

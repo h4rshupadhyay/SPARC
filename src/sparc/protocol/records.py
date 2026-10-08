@@ -309,7 +309,12 @@ class SessionCodec:
             )
 
         self._receive_next = sequence + 1
-        return OpenedRecord(payload=payload, inspection=inspection)
+        return OpenedRecord(
+            payload=payload,
+            inspection=inspection,
+            sequence=sequence,
+            direction=self._receive_direction(),
+        )
 
     def _open_finished(self, frame: Frame, sequence: int) -> OpenedRecord:
         if not isinstance(frame, Frame):

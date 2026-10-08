@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from .encoding import canonical, parse_object
-from .models import Identity, SparcError
+from .models import Endpoint, Identity, SparcError
 from .storage import atomic_write, secure_private_store
 
 
@@ -204,6 +204,19 @@ class TrustStore:
             if fingerprint in self._peers:
                 return "known"
             return "unknown"
+
+    def snapshot(self) -> list[dict]:
+        """Return sorted public peer records without exposing trust-store state."""
+        with self._lock:
+            self._ensure_available()
+            return [
+                {
+                    "fingerprint": fingerprint,
+                    "label": entry["label"],
+                    "endpoint": Endpoint(entry["ip"], entry["port"]),
+                }
+                for fingerprint, entry in sorted(self._peers.items())
+            ]
 
     def _write_peers(self, peers: dict[str, dict]) -> None:
         document = {"version": 1, "peers": peers}

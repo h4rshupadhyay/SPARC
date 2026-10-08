@@ -71,6 +71,8 @@ class ProtectedRecord:
 class OpenedRecord:
     payload: dict
     inspection: Inspection | None = None
+    sequence: int | None = None
+    direction: int | None = None
 
 
 @dataclass(frozen=True)

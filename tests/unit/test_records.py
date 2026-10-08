@@ -180,6 +180,8 @@ def test_unicode_round_trip_and_receiver_inspector(recipient_role, monkeypatch):
     assert opened.payload["text"] == text
     assert opened.payload["byte_count"] == len(encoded)
     assert opened.payload["sha256"] == expected_digest
+    assert opened.sequence == 1
+    assert opened.direction == (1 if recipient_role == "initiator" else 0)
     assert len(opened.payload["signature"]) > 0
     assert opened.inspection is not None
     assert opened.inspection.sha256 == expected_digest
@@ -207,6 +209,27 @@ def test_signed_control_records_are_opened_without_text_inspector(unsigned):
     frame, signed, _ = _independent_frame("initiator", unsigned)
     opened = receiver.open(frame)
     assert opened.payload == signed
+    assert opened.inspection is None
+    assert opened.sequence == 1
+    assert opened.direction == 1
+
+
+def test_finished_record_has_no_application_coordinates():
+    from sparc.models import Role
+    from sparc.protocol.records import SessionCodec
+
+    sender_identity = _identity(11)
+    receiver_identity = _identity(12)
+    sender = SessionCodec(
+        sender_identity, receiver_identity.public_bytes, Role.RESPONDER, _KEYS, _SESSION_ID
+    )
+    receiver = SessionCodec(
+        receiver_identity, sender_identity.public_bytes, Role.INITIATOR, _KEYS, _SESSION_ID
+    )
+    finished = {"kind": "finished", "transcript_sha256": _TRANSCRIPT_HASH}
+    opened = receiver.open(_frame(sender.protect(finished, frame_type=4).frame))
+    assert opened.sequence is None
+    assert opened.direction is None
     assert opened.inspection is None
 
 

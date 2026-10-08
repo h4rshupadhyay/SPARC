@@ -93,13 +93,20 @@ def test_limits_reject_invalid_values_and_security_invariants():
 
 
 def test_event_and_inspection_have_no_secret_fields():
-    from sparc.models import Inspection, ServiceEvent
+    from sparc.models import Inspection, OpenedRecord, ServiceEvent
 
     assert {field.name for field in fields(Inspection)} == {
         "message_id", "sequence", "sha256", "computed_sha256", "signature",
         "ciphertext", "nonce", "tag", "plaintext_bytes", "timings",
     }
     assert {field.name for field in fields(ServiceEvent)} == {"kind", "data"}
+
+    opened = OpenedRecord(payload={"kind": "ack"}, inspection=None)
+    assert opened.sequence is None
+    assert opened.direction is None
+    assert [field.name for field in fields(OpenedRecord)] == [
+        "payload", "inspection", "sequence", "direction"
+    ]
 
 
 def test_sparc_error_exposes_stable_category_and_message():
