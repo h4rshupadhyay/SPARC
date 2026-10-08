@@ -13,7 +13,7 @@ commits exist.
 | C3 Handshake | C3a-C3d | verified |
 | C4 Audit | C4a-C4d | verified |
 | C5 Peer service | C5a-C5g | verified |
-| C6 Availability | C6a-C6d | pending |
+| C6 Availability | C6a-C6d | verified |
 | C7 GUI | C7a-C7e | pending |
 | C8 Demonstration and baseline | C8a-C8c | pending |
 | A1 Sensitivity analysis | A1a-A1c | pending |
@@ -45,17 +45,17 @@ commits exist.
 | C4b | verified | audit verify/format/encoding: 98 passed | a8ec46c |
 | C4c | verified | audit/identity/trust suite: 115 passed | a8ec46c |
 | C4d | verified | full unit/integration suite: 330 passed; Sol review passed after report-count fix | a8ec46c |
-| C5a | verified | full suite: 339 passed; idle-writer wake regression fixed | uncommitted |
-| C5b | verified | full suite: 348 passed; bounded receipt and expiry oracles passed | uncommitted |
-| C5c | verified | full suite: 356 passed; listener and trust snapshot oracles passed | uncommitted |
-| C5d | verified | 37 pairing/listener/trust and 56 handshake/writer tests passed; audit endpoint serialization corrected | uncommitted |
-| C5e | verified | send/writer/receipt suite: 29 passed; stale-owner receipt invalidation regression fixed | uncommitted |
-| C5f | verified | receive/model/record/writer/send suite: 57 passed; signed peer evidence verified | uncommitted |
-| C5g | verified | full suite: 404 passed; Sol review corrections and scoped gate passed | uncommitted |
-| C6a | pending | Pending | pending |
-| C6b | pending | Pending | pending |
-| C6c | pending | Pending | pending |
-| C6d | pending | Pending | pending |
+| C5a | verified | full suite: 339 passed; idle-writer wake regression fixed | af7a5a1 |
+| C5b | verified | full suite: 348 passed; bounded receipt and expiry oracles passed | af7a5a1 |
+| C5c | verified | full suite: 356 passed; listener and trust snapshot oracles passed | af7a5a1 |
+| C5d | verified | 37 pairing/listener/trust and 56 handshake/writer tests passed; audit endpoint serialization corrected | af7a5a1 |
+| C5e | verified | send/writer/receipt suite: 29 passed; stale-owner receipt invalidation regression fixed | af7a5a1 |
+| C5f | verified | receive/model/record/writer/send suite: 57 passed; signed peer evidence verified | af7a5a1 |
+| C5g | verified | full suite: 404 passed; Sol review corrections and scoped gate passed | af7a5a1 |
+| C6a | verified | Missing-module RED; rolling source/global/capacity tests: 3 passed | this milestone |
+| C6b | verified | Focused 7 passed; 44 affected tests passed; audit-failure active-channel regression fixed | this milestone |
+| C6c | verified | Heartbeat, pacing maintenance, writer and rate-limit suite: 28 passed | this milestone |
+| C6d | verified | Full suite: 453 passed; audit-failure and full-queue regressions pass; Sol spec/security gate passed | this milestone |
 | C7a | pending | Pending | pending |
 | C7b | pending | Pending | pending |
 | C7c | pending | Pending | pending |
@@ -90,4 +90,4 @@ commits exist.
 
 ## Unresolved decisions
 
-C1-C4 Sol spec/quality reviews passed; full unit/integration suite: 330 passed. C1-C5 reviews passed. Full suite: 404 passed; C6 availability implementation is next.
+C1-C6 Sol spec/quality reviews passed. Full suite: 453 passed without warnings. C7 GUI implementation is next.

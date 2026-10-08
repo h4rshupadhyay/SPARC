@@ -11,6 +11,8 @@ from typing import Callable
 
 from ..models import Limits, OpenedRecord, ProtectedRecord, ServiceEvent, SparcError
 from ..protocol.framing import read_frame
+from .liveness import Liveness
+from .policy import RecordBucket
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,9 @@ class ActiveSession:
         self._codec = codec
         self._hooks = hooks
         self._limits = limits
+        self._outbound_bucket = RecordBucket(time.monotonic, limits=limits)
+        self._inbound_bucket = RecordBucket(time.monotonic, limits=limits)
+        self._liveness = Liveness(time.monotonic, limits=limits)
         self._session_id = session_id
         self._outbound: deque[dict] = deque()
         self._control: deque[dict] = deque()
@@ -148,18 +153,43 @@ class ActiveSession:
                 payload = self._outbound.popleft()
                 self._queue_condition.notify_all()
                 return payload
-            self._queue_condition.wait(timeout=self._limits.cancel_poll_seconds)
+            self._queue_condition.wait(
+                timeout=min(1.0, self._limits.cancel_poll_seconds)
+            )
             return None
 
     def _writer_loop(self) -> None:
         while not self._cancel.is_set():
+            ready, _ping = self._run_maintenance(allow_ping=False)
+            if not ready:
+                return
             payload = self._next_payload()
             if self._cancel.is_set():
                 return
             if payload is None:
-                if not self._run_poll():
+                ready, ping = self._run_maintenance(allow_ping=True)
+                if not ready:
                     return
-                continue
+                if ping is None:
+                    continue
+                payload = ping
+            try:
+                acquired = self._outbound_bucket.wait(
+                    self._cancel,
+                    maintenance=lambda: self._run_maintenance(allow_ping=False)[0],
+                )
+            except SparcError as error:
+                self._terminate(error)
+                return
+            except Exception:
+                self._terminate(
+                    SparcError("session_unusable", "Outbound record pacing failed")
+                )
+                return
+            if not acquired:
+                return
+            if self._cancel.is_set():
+                return
             try:
                 protected = self._codec.protect(payload)
             except SparcError as error:
@@ -186,7 +216,9 @@ class ActiveSession:
             except Exception as exc:
                 self._terminate(SparcError("tcp_loss", "Socket failed while writing a record"))
                 return
-            if not self._run_poll():
+            self._liveness.sent()
+            ready, _ping = self._run_maintenance(allow_ping=False)
+            if not ready:
                 return
 
     def _reader_loop(self) -> None:
@@ -194,8 +226,23 @@ class ActiveSession:
             try:
                 frame = read_frame(self._sock, self._cancel, None, self._limits)
                 opened = self._codec.open(frame)
+                if not self._inbound_bucket.allow():
+                    raise SparcError(
+                        "record_rate_limit", "Peer exceeded the application record rate"
+                    )
                 if self._cancel.is_set():
                     return
+                payload = opened.payload
+                kind = payload.get("kind")
+                if kind == "pong":
+                    self._liveness.accept_pong(payload["ping_id"])
+                    self._liveness.received()
+                    continue
+                if kind == "ping":
+                    self._liveness.received()
+                    self.enqueue({"kind": "pong", "ping_id": payload["ping_id"]}, control=True)
+                    continue
+                self._liveness.received()
                 with self._callback_lock:
                     if not self._cancel.is_set():
                         self._hooks.on_payload(opened)
@@ -208,20 +255,29 @@ class ActiveSession:
                 self._terminate(SparcError("session_unusable", "Could not process an incoming record"))
                 return
 
-    def _run_poll(self) -> bool:
-        if self._hooks.on_poll is None:
-            return not self._cancel.is_set()
-        try:
-            self._hooks.on_poll()
-        except SparcError as error:
-            self._terminate(error)
-            return False
-        except Exception:
-            self._terminate(SparcError("session_unusable", "Session polling failed"))
-            return False
-        return not self._cancel.is_set()
+    def _run_maintenance(self, *, allow_ping: bool) -> tuple[bool, dict | None]:
+        if self._hooks.on_poll is not None:
+            try:
+                self._hooks.on_poll()
+            except SparcError as error:
+                self._terminate(error)
+                return False, None
+            except Exception:
+                self._terminate(SparcError("session_unusable", "Session polling failed"))
+                return False, None
+        if self._cancel.is_set():
+            return False, None
+        ping, lost = self._liveness.tick(allow_ping=allow_ping)
+        if lost:
+            elapsed_ns = self._liveness.loss_elapsed_ns
+            self._terminate(
+                SparcError("peer_inactivity", "Peer activity deadline expired"),
+                loss_elapsed_ns=elapsed_ns,
+            )
+            return False, None
+        return not self._cancel.is_set(), ping
 
-    def _terminate(self, error: SparcError) -> None:
+    def _terminate(self, error: SparcError, *, loss_elapsed_ns: int | None = None) -> None:
         """Run the one terminal transition, with hooks outside the state lock."""
         with self._state_lock:
             if self._terminal:
@@ -233,6 +289,18 @@ class ActiveSession:
             self._queue_condition.notify_all()
 
         self._close_transport()
+        if error.code == "peer_inactivity" and loss_elapsed_ns is not None:
+            event = ServiceEvent("operation_metrics", {
+                "operation": "peer_inactivity_detection",
+                "elapsed_ns": loss_elapsed_ns,
+                "success": False,
+                "context": {"reason": "peer_inactivity"},
+            })
+            try:
+                self._hooks.emit(event)
+            except Exception:
+                # This optional metric cannot interfere with terminal cleanup.
+                pass
         self._call_closed(error)
 
     def _close_transport(self) -> None:

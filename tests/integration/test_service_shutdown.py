@@ -151,7 +151,8 @@ def test_session_close_unblocks_reader_and_full_event_queue(peer_pair, trigger):
 
 @pytest.mark.parametrize(
     "peer_pair",
-    [Limits(delivery_timeout_seconds=0.12, cancel_poll_seconds=0.01)],
+    [Limits(delivery_timeout_seconds=0.12, cancel_poll_seconds=0.01,
+            reconnect_delays=())],
     indirect=True,
 )
 def test_delivery_timeout_is_unconfirmed_without_a_waiter(peer_pair):
@@ -175,7 +176,8 @@ def test_delivery_timeout_is_unconfirmed_without_a_waiter(peer_pair):
 
 @pytest.mark.parametrize(
     "peer_pair",
-    [Limits(delivery_timeout_seconds=0.2, cancel_poll_seconds=0.01)],
+    [Limits(delivery_timeout_seconds=0.2, cancel_poll_seconds=0.01,
+            reconnect_delays=())],
     indirect=True,
 )
 def test_delivery_expiry_runs_while_valid_frames_continue(peer_pair):

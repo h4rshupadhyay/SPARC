@@ -13,6 +13,7 @@
 - Signed hash-chain audit logs, durable append and independently verifiable checkpoints with honest deletion-relative reports.
 
 - Accountable peer messaging service with manual IPv4 listeners, fingerprint pairing, bounded delivery receipts and operation metrics.
+- Rolling connection limits, paced authenticated records, signed idle heartbeats and finite authenticated reconnection.
 
 ### Security
 
@@ -21,6 +22,8 @@
 
 - Verify and durably audit received messages and signed acknowledgments before reporting delivery.
 - Retain signed zero-head audit checkpoints before service startup.
+- Keep retries bound to the original authenticated identity and never automatically replay text.
+- Durably audit retry outcomes and stop networking after availability-audit failure.
 
 ### Fixed
 
@@ -33,3 +36,6 @@
 
 - Wake idle writers on either queue and isolate stale-session receipt cleanup.
 - Share cancellation across session workers and service event producers to prevent full-queue shutdown deadlocks.
+
+- Latch audit failures before diagnostics and stop inbound handshakes even when cancellation races cleanup.
+- Keep authenticated retry progression and Stop responsive when the ordinary event queue is full.

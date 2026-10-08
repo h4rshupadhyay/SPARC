@@ -40,9 +40,15 @@ C1a owns every shared type above. `Limits` is frozen. Public APIs below retain t
 
 Concurrency is fixed by Sol here: `PeerService` owns one state lock and a session-generation number. Listener, handshake coordinator and active session are separate workers; only one handshake/session slot may be occupied. `ActiveSession` owns two bounded FIFO deques under one Condition, with maximum 1,024 ordinary outbound payloads and a separate control capacity of 100; writer drains control first, is the only caller of `protect` and `sendall`, and never holds service state lock across I/O/fsync/event backpressure. Reader alone calls `open`. Receipt state owns its own lock/condition. All queue puts use cancellation-aware bounded waits; shutdown closes sockets, sets cancel and wakes conditions before joining workers. Lock order is service state then receipt state; no reverse acquisition. Session-generation checks discard stale completions/pairing approvals. After a failed write the codec/session is discarded. Event puts use the public queue bound 1,024; backpressure never silently drops verification results. Sol must resolve any contradiction before Luna implements it.
 
-`SessionHooks(on_payload: Callable[[OpenedRecord], None], on_closed: Callable[[SparcError], None], emit: Callable[[ServiceEvent], None], on_written=None, on_poll=None)` is C5a's internal callback record. `ActiveSession(sock, established: EstablishedSession, hooks: SessionHooks, limits: Limits, *, cancel: Event | None = None)` exposes `start() -> None`, `enqueue(payload: dict, control: bool = False) -> None`, `close() -> None`, `join(timeout: float = 2) -> bool`, and `session_id: bytes`. Ordinary enqueue rejects full queues with a visible busy domain error; bounded control producers wait with cancel checks. C5e adds the optional before-write callback; C5g adds optional sole-writer polling for receipt deadlines and supplies the exact attempt cancellation event. C6 adds availability policy; no second socket writer is introduced. Terminal state delivery uses the ordinary bounded event queue plus one key-free pending state snapshot, coalesced by generation and consumed by unchanged get/get_nowait calls; ordinary verification events are retained.
+`SessionHooks(on_payload: Callable[[OpenedRecord], None], on_closed: Callable[[SparcError], None], emit: Callable[[ServiceEvent], None], on_written=None, on_poll=None)` is C5a's internal callback record. `ActiveSession(sock, established: EstablishedSession, hooks: SessionHooks, limits: Limits, *, cancel: Event | None = None)` exposes `start() -> None`, `enqueue(payload: dict, control: bool = False) -> None`, `close() -> None`, `join(timeout: float = 2) -> bool`, and `session_id: bytes`. Ordinary enqueue rejects full queues with a visible busy domain error; bounded control producers wait with cancel checks. C5e adds the optional before-write callback; C5g adds optional sole-writer polling for receipt deadlines and supplies the exact attempt cancellation event. C6 adds availability policy; no second socket writer is introduced. Terminal state delivery uses the ordinary bounded event queue plus one key-free pending state snapshot, coalesced by generation and consumed by unchanged get/get_nowait calls; ordinary verification events are retained. C6 also routes reconnect scheduling and recovered connection status through that same single snapshot. Retry handshake/audit spans and audit-failure diagnostics use nonblocking exact-owner publication and may be omitted when ordinary capacity is full.
 
 The service records outbound audit attempts **before** writer enqueue. Incoming verified audit append is completed **before** acknowledgment enqueue or received-message publication. C5b's pending record must be inserted before enqueue so a fast acknowledgment cannot race it. Public `wait_for_receipt` operates off the Tk thread. Completed receipt cache is bounded to 100 entries; pending remains bounded to 100. Evicted completed receipts give a clear unavailable-receipt error, never manufactured timings.
+
+C6 preserves clock-only helper construction with optional keyword-only `limits=Limits()`. Denied connection attempts count in capped rolling windows. All outgoing application records use one per-direction bucket before protection; authenticated incoming records are charged before dispatch. Rejection summaries use bounded counters and at least five seconds between durable summaries; audit failure stops the captured channel and disables new networking. The audit-failure latch precedes diagnostics, survives cancellation, and guards inbound reservation, coordinator entry, durable operations and adoption. The failure helper closes an assigned session's transport without setting its shared cancel or releasing its occupied slot; the existing owner then completes terminal cleanup. Handshake-only owners may be canceled immediately. Listener teardown uses captured resources and never invokes public Stop to cancel an assigned recovered session accidentally.
+
+C6c reuses signed session establishment and closure events for liveness state changes. `Liveness.loss_elapsed_ns` carries the duration from the same monotonic sample that declares loss. The winning inactivity transition publishes an optional key-free metric through a nonblocking exact-owner callback before terminal cleanup; a full ordinary event queue may omit that diagnostic. `RecordBucket.wait(cancel, *, maintenance=None)` permits maintenance outside the bucket lock with waits capped at one second when supplied. `Liveness.tick(*, allow_ping=True)` permits loss-only polling while a frame is selected or pacing. Idle pings become the sole writer's current paced frame after FIFO/control selection, without another queue or worker.
+
+C6d retains the original initiator's configured endpoint and authenticated fingerprint throughout one finite retry chain. The sole slot remains reserved during cancel-aware delays and fresh handshakes. Unknown or forgotten peers cannot trigger automatic approval or repinning; the returned fingerprint is checked before successful audits, pinning or adoption. Only established eligible loss starts a chain; later handshake TCP failures consume its remaining budget. Disconnect, Stop and shutdown revoke delayed work even without an active listener. Successful closure audit is required, and text is never automatically replayed.
 
 ## Fixed audit and store schema decisions
 
@@ -439,9 +445,9 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Interfaces:** Produce `ConnectionLimiter(clock: Callable[[],float]).allow(ip: str) -> bool`
 
-- [ ] **Fixed test oracle:** `test_source_and_global_limits`: deny21st source/61st global in rolling60s. `test_source_buckets_never_exceed_256`: expired eviction, full unexpired table rejects new source. No fixed-minute rollover loophole
-- [ ] **Luna implementation:** Monotonic deque windows, at most256 source buckets, spec 20/source/minute 60/global/minute. Decisions deterministic under injected clock; no disk or sockets
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_connection_policy.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_source_and_global_limits`: deny21st source/61st global in rolling60s. `test_source_buckets_never_exceed_256`: expired eviction, full unexpired table rejects new source. No fixed-minute rollover loophole
+- [x] **Luna implementation:** Monotonic deque windows, at most256 source buckets, spec 20/source/minute 60/global/minute. Decisions deterministic under injected clock; no disk or sockets
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_connection_policy.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** record bucket, listener integration.
 
@@ -453,23 +459,23 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Interfaces:** Produce `RecordBucket(clock: Callable[[],float]).allow() -> bool`, `.wait(cancel: Event) -> bool`; wireC6a into listener and bucket into existing sole writer/reader
 
-- [ ] **Fixed test oracle:** `test_record_burst_401_is_denied`:200/s burst 400 and refill with injected time. `test_sender_paces_acks_controls_and_data`: normal benchmark remains within receiver limit. `test_flood_rejections_audited_at_most_every_five_seconds`: connection/record rejects aggregated, storage bounded
-- [ ] **Luna implementation:** Separate per-direction buckets. Writer waits cancel-aware before protection/send; reader counts authenticated app records then rejects excessive burst. Busy handling still before handshake. This bounded integration patch adds policies to existing workers, no new concurrency structure
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_policy.py tests/integration/test_record_pacing.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_record_burst_401_is_denied`:200/s burst 400 and refill with injected time. `test_sender_paces_acks_controls_and_data`: normal benchmark remains within receiver limit. `test_flood_rejections_audited_at_most_every_five_seconds`: connection/record rejects aggregated, storage bounded
+- [x] **Luna implementation:** Separate per-direction buckets. Writer waits cancel-aware before protection/send; reader counts authenticated app records then rejects excessive burst. Busy handling still before handshake. This bounded integration patch adds policies to existing workers, no new concurrency structure
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_policy.py tests/integration/test_record_pacing.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** heartbeat or retry.
 
 #### C6c: Signed idle heartbeat and loss detection
 
-**Files:** Create `src/sparc/peer/liveness.py`; modify `src/sparc/peer/session.py`; test `tests/unit/test_liveness.py`, `tests/integration/test_heartbeat.py`
+**Files:** Create `src/sparc/peer/liveness.py`; modify `src/sparc/peer/session.py`, the maintenance callback in `src/sparc/peer/policy.py`, and the exact-owner metric callback in `src/sparc/peer/service.py`; test `tests/unit/test_liveness.py`, `tests/integration/test_heartbeat.py`
 
 **Prerequisites:** C6b.
 
 **Interfaces:** Produce `Liveness(clock: Callable[[],float]).sent() -> None`, `.received() -> None`, `.tick() -> tuple[dict | None, bool]`, `.accept_pong(ping_id: str) -> None`; tickreturns optional unsigned ping and lost flag
 
-- [ ] **Fixed test oracle:** `test_ping_after_five_seconds_and_loss_after_fifteen`: valid incoming refresh, signed pong matching ID, no recursive ack. `test_idle_healthy_session_survives` actual sockets with shortened injected limits; loss metric is last valid activity to declared loss
-- [ ] **Luna implementation:** Existing writer loop polls liveness no less often than1s; tick uses5s outgoing idle/15s valid incoming inactivity. Secure32hex ping IDs, bounded outstanding ping set; protocol projection signs ping/pong. Reader validates matching pong and updates valid activity. Audit liveness state changes only
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_liveness.py tests/integration/test_heartbeat.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_ping_after_five_seconds_and_loss_after_fifteen`: valid incoming refresh, signed pong matching ID, no recursive ack. `test_idle_healthy_session_survives` actual sockets with shortened injected limits; loss metric is last valid activity to declared loss
+- [x] **Luna implementation:** Existing writer loop polls liveness no less often than1s; tick uses5s outgoing idle/15s valid incoming inactivity. Secure32hex ping IDs, bounded outstanding ping set; protocol projection signs ping/pong. Reader validates matching pong and updates valid activity. Audit liveness state changes only
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_liveness.py tests/integration/test_heartbeat.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** automatic reconnection.
 
@@ -481,9 +487,9 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Interfaces:** Produce `ReconnectPolicy.delays(error_code: str, explicit_stop: bool) -> tuple[float,...]`; extend existing coordinator only
 
-- [ ] **Fixed test oracle:** `test_eligible_loss_delays_exactly_1_2_4`: only original initiator retries prior pinned endpoint/key, max3 attempts. `test_auth_changed_audit_or_stop_never_retries`. `test_reconnect_fresh_keys_and_no_resend`: actual sessionIDs differ, pending remains unconfirmed, no automatic duplicate text. `test_reconnect_cancel_wakes_wait`
-- [ ] **Luna implementation:** Eligible TCP loss/delivery timeout/inactivity only. Cancel-aware waits, fresh C3 full handshake each attempt; expected pinned fingerprint checked. No concurrent cross-connects. Emit elapsed recovery/attempt outcomes and actual policy settings; audit failure disables retries
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_reconnect_policy.py tests/integration/test_availability.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_eligible_loss_delays_exactly_1_2_4`: only original initiator retries prior pinned endpoint/key, max3 attempts. `test_auth_changed_audit_or_stop_never_retries`. `test_reconnect_fresh_keys_and_no_resend`: actual sessionIDs differ, pending remains unconfirmed, no automatic duplicate text. `test_reconnect_cancel_wakes_wait`
+- [x] **Luna implementation:** Eligible TCP loss/delivery timeout/inactivity only. Cancel-aware waits, fresh C3 full handshake each attempt; expected pinned fingerprint checked. No concurrent cross-connects. Emit elapsed recovery/attempt outcomes and actual policy settings; audit failure disables retries
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_reconnect_policy.py tests/integration/test_availability.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** new retry thresholds or automatic resend.
 

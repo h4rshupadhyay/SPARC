@@ -27,8 +27,11 @@ from ..protocol.handshake import perform_handshake
 from ..protocol.handshake_types import EstablishedSession, PeerCandidate
 from ..protocol.messages import prepare_text, signing_projection
 from .pairing import PairingRequests
+from .policy import ConnectionLimiter, ReconnectPolicy
 from .receipts import PendingMessage, ReceiptLedger
 from .session import ActiveSession, SessionHooks
+
+_MAX_AUDIT_COUNT = 2**64 - 1
 
 
 def _endpoint_metadata(endpoint: Endpoint) -> str:
@@ -146,6 +149,7 @@ class _Attempt:
     role: Role
     endpoint: Endpoint
     cancel: threading.Event
+    epoch: int = 0
     sock: socket.socket | None = None
     worker: threading.Thread | None = None
     session: ActiveSession | None = None
@@ -154,6 +158,20 @@ class _Attempt:
     received_benchmark_records: int = 0
     received_benchmark_bytes: int = 0
     approval_wait_included: bool = False
+    peer_fingerprint: str | None = None
+    retry_chain: _ReconnectChain | None = None
+    retry_index: int = 0
+    reconnect_outcome_attempted: bool = False
+
+
+@dataclass(eq=False, frozen=True)
+class _ReconnectChain:
+    endpoint: Endpoint
+    fingerprint: str
+    started_ns: int
+    delays: tuple[float, ...]
+    cancel: threading.Event
+    epoch: int
 
 
 class PeerService:
@@ -172,8 +190,15 @@ class PeerService:
 
         self.events: queue.Queue[ServiceEvent] = _ServiceEventQueue(maxsize=limits.event_queue)
         self._state_lock = threading.RLock()
+        self._connection_limiter = ConnectionLimiter(time.monotonic, limits=limits)
+        self._rate_limit_lock = threading.Lock()
+        self._rate_limit_connection_count = 0
+        self._rate_limit_record_count = 0
+        self._rate_limit_last_audit: float | None = None
+        self._rate_limit_interval = 5.0
         self._state = "stopped"
         self._closed = False
+        self._audit_failed = False
         self._cancel = threading.Event()
         self._listener_cancel = threading.Event()
         self._listener: socket.socket | None = None
@@ -183,6 +208,8 @@ class PeerService:
         self._listener_generation = 0
         self._slot: _Attempt | None = None
         self._generation = 0
+        self._reconnect_epoch = 0
+        self._reconnect_policy = ReconnectPolicy(time.monotonic, limits=limits)
         self._receipts = ReceiptLedger(
             limit=limits.pending_requests,
             delivery_timeout_seconds=limits.delivery_timeout_seconds,
@@ -208,6 +235,8 @@ class PeerService:
         started_ns = time.perf_counter_ns()
         with self._state_lock:
             attempt = self._slot
+            if self._audit_failed:
+                raise SparcError("audit_storage_failed", "Audit storage failed closed")
             if self._closed or self._state != "connected" or attempt is None or attempt.session is None:
                 raise SparcError("invalid_state", "A connected peer session is required to send text")
             session = attempt.session
@@ -306,6 +335,8 @@ class PeerService:
             raise SparcError("invalid_port", "Port must be an integer from 0 to 65535")
 
         with self._state_lock:
+            if self._audit_failed:
+                raise SparcError("audit_storage_failed", "Audit storage failed closed")
             if self._closed:
                 raise SparcError("operation_cancelled", "Peer service is closed")
             if self._listener is not None or self._listener_starting:
@@ -326,7 +357,7 @@ class PeerService:
             raise SparcError("bind_failed", "Could not create the requested listener") from exc
 
         with self._state_lock:
-            canceled = (self._closed or listener_cancel.is_set()
+            canceled = (self._closed or self._audit_failed or listener_cancel.is_set()
                         or generation != self._listener_generation)
             if not canceled:
                 self._listener_starting_socket = listener
@@ -351,7 +382,7 @@ class PeerService:
                 if self._listener_starting_socket is listener:
                     self._listener_starting_socket = None
                     self._listener_starting = False
-            if listener_cancel.is_set() or self._closed:
+            if listener_cancel.is_set() or self._closed or self._audit_failed:
                 raise SparcError("operation_cancelled", "Listener startup was canceled") from exc
             raise SparcError("bind_failed", "Could not start the requested listener") from exc
 
@@ -364,7 +395,7 @@ class PeerService:
         canceled_during_bind = False
         try:
             with self._state_lock:
-                if (self._closed or listener_cancel.is_set()
+                if (self._closed or self._audit_failed or listener_cancel.is_set()
                         or generation != self._listener_generation):
                     if self._listener_starting_socket is listener:
                         self._listener_starting_socket = None
@@ -402,14 +433,28 @@ class PeerService:
 
     def stop_listener(self) -> None:
         with self._state_lock:
+            self._reconnect_epoch += 1
             listener = self._listener
             worker = self._listener_thread
             starting_socket = self._listener_starting_socket
             listener_cancel = self._listener_cancel
             starting = self._listener_starting
+            retry_attempt = self._slot if (
+                self._slot is not None and self._slot.retry_chain is not None
+            ) else None
+            retry_worker = retry_attempt.worker if retry_attempt is not None else None
+            retry_sock = retry_attempt.sock if retry_attempt is not None else None
+            if retry_attempt is not None:
+                retry_attempt.retry_chain.cancel.set()
+                retry_attempt.cancel.set()
             if listener is None and not starting:
+                # An absent listener does not make an explicit Stop a no-op:
+                # it still revokes a reserved retry chain above.
+                pass
+            else:
+                listener_cancel.set()
+            if listener is None and not starting and retry_attempt is None:
                 return
-            listener_cancel.set()
             if listener is not None:
                 self._listener = None
                 self._listener_thread = None
@@ -424,9 +469,14 @@ class PeerService:
                 sock.close()
             except OSError:
                 pass
+        if retry_sock is not None:
+            self._close_socket(retry_sock)
         if worker is not None and worker is not threading.current_thread():
             worker.join(timeout=2)
-        if listener is not None:
+        if (retry_worker is not None and retry_worker is not threading.current_thread()
+                and retry_worker.is_alive()):
+            retry_worker.join(timeout=2)
+        if listener is not None and retry_attempt is None:
             self._emit_state(state, "listener_stopped", None, self._cancel)
 
     def connect(self, endpoint: Endpoint) -> None:
@@ -444,10 +494,13 @@ class PeerService:
             raise SparcError("invalid_port", "Peer port must be from 1 to 65535")
 
         with self._state_lock:
+            if self._audit_failed:
+                raise SparcError("audit_storage_failed", "Audit storage failed closed")
             if self._closed:
                 raise SparcError("operation_cancelled", "Peer service is closed")
             if self._slot is not None:
                 raise SparcError("busy", "A connection attempt or session is already active")
+            self._reconnect_epoch += 1
             self._generation += 1
             self.events.advance_generation(self._generation)
             attempt = _Attempt(
@@ -455,6 +508,7 @@ class PeerService:
                 role=Role.INITIATOR,
                 endpoint=endpoint,
                 cancel=threading.Event(),
+                epoch=self._reconnect_epoch,
             )
             self._slot = attempt
             self._state = "connecting"
@@ -473,9 +527,12 @@ class PeerService:
     def disconnect(self) -> None:
         """Cancel the current attempt or established session, retaining the listener."""
         with self._state_lock:
+            self._reconnect_epoch += 1
             attempt = self._slot
             if attempt is None:
                 return
+            if attempt.retry_chain is not None:
+                attempt.retry_chain.cancel.set()
             attempt.cancel.set()
             sock = attempt.sock
             session = attempt.session
@@ -495,6 +552,7 @@ class PeerService:
             if self._closed:
                 return
             self._closed = True
+            self._reconnect_epoch += 1
             self._cancel.set()
             self._listener_cancel.set()
             listener = self._listener
@@ -510,6 +568,8 @@ class PeerService:
             self._state = "stopped"
             self._receipts.fail_all("Peer service closed before delivery confirmation")
             if attempt is not None:
+                if attempt.retry_chain is not None:
+                    attempt.retry_chain.cancel.set()
                 attempt.cancel.set()
                 sock = attempt.sock
                 session = attempt.session
@@ -563,6 +623,91 @@ class PeerService:
         )}
         self._emit(ServiceEvent("state", data), cancel)
 
+    def _publish_owned_state(self, attempt: _Attempt, state: str, reason: str,
+                             endpoint: Endpoint | None) -> None:
+        """Coalesce owned lifecycle state without waiting for ordinary capacity."""
+        with self._state_lock:
+            if (self._audit_failed or self._slot is not attempt
+                    or self._generation != attempt.generation):
+                return
+            event = ServiceEvent("state", {
+                "state": state,
+                "reason": reason,
+                "endpoint": None if endpoint is None else _endpoint_event_data(endpoint),
+            })
+            generation = attempt.generation
+        publish = getattr(self.events, "publish_terminal", None)
+        if callable(publish):
+            publish(event, generation)
+
+    def _emit_owned_metric(self, attempt: _Attempt, operation: str, started_ns: int,
+                           success: bool, encoded_bytes: int | None, context: dict,
+                           *, elapsed_ns: int | None = None,
+                           allow_cancelled_owner: bool = False) -> None:
+        """Insert an optional key-free diagnostic without queue backpressure."""
+        data = {
+            "operation": operation,
+            "elapsed_ns": (max(0, time.perf_counter_ns() - started_ns)
+                           if elapsed_ns is None else max(0, elapsed_ns)),
+            "success": success,
+            "context": dict(context),
+        }
+        if encoded_bytes is not None:
+            data["encoded_bytes"] = encoded_bytes
+        event = ServiceEvent("operation_metrics", data)
+        with self._state_lock:
+            if (self._slot is not attempt or self._generation != attempt.generation
+                    or (attempt.cancel.is_set() and not allow_cancelled_owner)):
+                return
+            try:
+                self.events.put_nowait(event)
+            except queue.Full:
+                pass
+
+    def _latch_audit_failure(self, failed_attempt: _Attempt | None = None) -> bool:
+        """Latch fail-closed state and close only the captured owner transport."""
+        with self._state_lock:
+            self._audit_failed = True
+            self._reconnect_epoch += 1
+            attempt = failed_attempt
+            if attempt is None:
+                attempt = self._slot
+            owns_attempt = (
+                attempt is not None
+                and self._slot is attempt
+                and self._generation == attempt.generation
+            )
+            attempt_socket = None
+            session_socket = None
+            if owns_attempt:
+                if attempt.retry_chain is not None:
+                    attempt.retry_chain.cancel.set()
+                if attempt.session is None:
+                    attempt.cancel.set()
+                    attempt_socket = attempt.sock
+                else:
+                    # Do not set the session's shared cancellation event here.
+                    # Closing transport lets its reader/owner win on_closed.
+                    session_socket = attempt.session._sock
+
+            listener = self._listener
+            starting_socket = self._listener_starting_socket
+            listener_cancel = self._listener_cancel
+            self._listener = None
+            self._listener_thread = None
+            self._listener_starting_socket = None
+            self._listener_starting = False
+            self._listener_generation += 1
+            listener_cancel.set()
+            if self._slot is None:
+                self._state = "error"
+
+        for sock in {id(value): value for value in (
+            listener, starting_socket, attempt_socket, session_socket
+        ) if value is not None}.values():
+            self._close_socket(sock)
+        return owns_attempt
+
     def _start_coordinator(self, attempt: _Attempt) -> None:
         worker = threading.Thread(
             target=self._coordinate,
@@ -571,6 +716,8 @@ class PeerService:
             daemon=True,
         )
         with self._state_lock:
+            if self._audit_failed:
+                raise SparcError("audit_storage_failed", "Audit storage failed closed")
             if self._closed or self._slot is not attempt or attempt.cancel.is_set():
                 raise SparcError("operation_cancelled", "Connection attempt was canceled")
             attempt.worker = worker
@@ -587,6 +734,7 @@ class PeerService:
             try:
                 accepted, peer = listener.accept()
             except (socket.timeout, TimeoutError):
+                self._flush_rate_limit_audit()
                 continue
             except OSError:
                 if listener_cancel.is_set() or self._cancel.is_set():
@@ -594,9 +742,16 @@ class PeerService:
                 return
 
             endpoint = Endpoint(str(peer[0]), int(peer[1]))
+            if not self._connection_limiter.allow(endpoint.ip):
+                self._close_socket(accepted)
+                if not self._record_rate_limit_rejection("connection"):
+                    return
+                continue
+
             busy = False
             with self._state_lock:
-                if self._closed or listener_cancel.is_set() or self._slot is not None:
+                if (self._closed or self._audit_failed or listener_cancel.is_set()
+                        or self._slot is not None):
                     busy = True
                 else:
                     self._generation += 1
@@ -606,6 +761,7 @@ class PeerService:
                         role=Role.RESPONDER,
                         endpoint=endpoint,
                         cancel=threading.Event(),
+                        epoch=self._reconnect_epoch,
                         sock=accepted,
                     )
                     self._slot = attempt
@@ -630,11 +786,90 @@ class PeerService:
                 self._finish_attempt(attempt, failure)
                 self._close_socket(accepted)
 
+    def _record_rate_limit_rejection(self, kind: str) -> bool:
+        with self._rate_limit_lock:
+            if kind == "connection":
+                self._rate_limit_connection_count = min(
+                    _MAX_AUDIT_COUNT, self._rate_limit_connection_count + 1
+                )
+            elif kind == "record":
+                self._rate_limit_record_count = min(
+                    _MAX_AUDIT_COUNT, self._rate_limit_record_count + 1
+                )
+            else:
+                raise ValueError("unknown rate-limit rejection kind")
+        return self._flush_rate_limit_audit()
+
+    def _flush_rate_limit_audit(self) -> bool:
+        """Write one bounded rejection summary at most once per five seconds."""
+        with self._rate_limit_lock:
+            connection_count = self._rate_limit_connection_count
+            record_count = self._rate_limit_record_count
+            count = min(_MAX_AUDIT_COUNT, connection_count + record_count)
+            if not count:
+                return True
+            now = time.monotonic()
+            if (self._rate_limit_last_audit is not None
+                    and now - self._rate_limit_last_audit < self._rate_limit_interval):
+                return True
+            if connection_count and record_count:
+                code = "multiple_rate_limits"
+                reason = "Connection and record rate limits were exceeded"
+            elif connection_count:
+                code = "connection_limit"
+                reason = "Connection attempt rate limit was exceeded"
+            else:
+                code = "record_rate_limit"
+                reason = "Application record rate limit was exceeded"
+            metadata = {
+                "code": code,
+                "reason": reason,
+                "count": count,
+            }
+            try:
+                # Audit append may fsync. It is intentionally outside the
+                # service state lock, while the aggregate lock preserves one
+                # bounded summary and its five-second cadence.
+                self._audit.append("rate_limit_rejected", metadata)
+            except Exception:
+                if self._rate_limit_last_audit is None:
+                    self._rate_limit_last_audit = now
+                audit_failed = True
+            else:
+                self._rate_limit_connection_count = 0
+                self._rate_limit_record_count = 0
+                # Start the cooldown after the durable append completes, so
+                # audit timestamps remain at least one full interval apart.
+                self._rate_limit_last_audit = time.monotonic()
+                audit_failed = False
+        if audit_failed:
+            self._fail_closed_after_rate_audit_failure()
+            return False
+        return True
+
+    def _fail_closed_after_rate_audit_failure(self) -> None:
+        """Fail closed without stealing cleanup from the captured owner."""
+        self._latch_audit_failure()
+
     def _approve(self, attempt: _Attempt, candidate: PeerCandidate) -> bool:
         if not self._is_current(attempt):
             raise SparcError("operation_cancelled", "Connection attempt is no longer active")
+        chain = attempt.retry_chain
+        if chain is not None:
+            # Automatic recovery is reauthentication to an already pinned key,
+            # never an implicit pairing or a way to restore forgotten trust.
+            if candidate.fingerprint != chain.fingerprint:
+                raise SparcError("changed_identity", "Automatic reconnect reached a different peer")
+            try:
+                trust_state = self._trust.check(candidate.public_key, candidate.endpoint)
+            except SparcError as error:
+                raise SparcError("changed_identity", "Automatic reconnect trust is unavailable") from error
+            if trust_state != "known":
+                raise SparcError("changed_identity", "Automatic reconnect peer is no longer trusted")
+            return True
         with self._state_lock:
-            if self._slot is not attempt or attempt.cancel.is_set() or self._closed:
+            if (self._slot is not attempt or attempt.cancel.is_set() or self._closed
+                    or self._audit_failed):
                 raise SparcError("operation_cancelled", "Connection attempt is no longer active")
             self._state = "awaiting approval"
             attempt.approval_wait_included = True
@@ -651,6 +886,18 @@ class PeerService:
         failure: SparcError | None = None
         adopted = False
         try:
+            chain = attempt.retry_chain
+            retry_delay = None
+            if not self._is_current(attempt):
+                raise SparcError("operation_cancelled", "Connection attempt is no longer active")
+            if chain is not None:
+                if not self._retry_is_current(attempt):
+                    raise SparcError("operation_cancelled", "Reconnect was canceled")
+                retry_delay = chain.delays[attempt.retry_index]
+                if chain.cancel.wait(retry_delay) or attempt.cancel.is_set():
+                    raise SparcError("operation_cancelled", "Reconnect was canceled")
+                if not self._retry_is_current(attempt):
+                    raise SparcError("operation_cancelled", "Reconnect was canceled")
             sock = attempt.sock
             if sock is None:
                 if not self._is_current(attempt):
@@ -658,7 +905,8 @@ class PeerService:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 canceled = False
                 with self._state_lock:
-                    if self._slot is not attempt or self._closed or attempt.cancel.is_set():
+                    if (self._slot is not attempt or self._closed or self._audit_failed
+                            or attempt.cancel.is_set()):
                         canceled = True
                     else:
                         attempt.sock = sock
@@ -666,11 +914,19 @@ class PeerService:
                     self._close_socket(sock)
                     raise SparcError("operation_cancelled", "Connection attempt was canceled")
                 try:
+                    sock.settimeout(min(1.0, self.limits.cancel_poll_seconds))
                     sock.connect((attempt.endpoint.ip, attempt.endpoint.port))
                 except OSError as exc:
                     raise SparcError("tcp_loss", "Could not connect to the requested peer") from exc
+                finally:
+                    try:
+                        sock.settimeout(None)
+                    except OSError:
+                        pass
 
             handshake_started = time.perf_counter_ns()
+            if not self._is_current(attempt):
+                raise SparcError("operation_cancelled", "Connection attempt is no longer active")
             try:
                 established = perform_handshake(
                     sock,
@@ -682,21 +938,28 @@ class PeerService:
                     self.limits,
                 )
             except Exception:
-                self._emit_operation_metric(
-                    "handshake", handshake_started, False, None,
+                self._emit_attempt_operation_metric(
+                    attempt, "handshake", handshake_started, False, None,
                     {"endpoint": _endpoint_event_data(attempt.endpoint),
                      "approval_included": attempt.approval_wait_included},
-                    attempt.cancel,
                 )
                 raise
-            self._emit_operation_metric(
-                "handshake", handshake_started, True, None,
+            self._emit_attempt_operation_metric(
+                attempt, "handshake", handshake_started, True, None,
                 {"endpoint": _endpoint_event_data(attempt.endpoint),
                  "approval_included": attempt.approval_wait_included},
-                attempt.cancel,
             )
             if not self._is_current(attempt):
                 raise SparcError("operation_cancelled", "Connection attempt was canceled")
+
+            chain = attempt.retry_chain
+            if chain is not None:
+                if (established.peer.fingerprint != chain.fingerprint
+                        or established.newly_approved
+                        or not self._retry_is_current(attempt)):
+                    raise SparcError("changed_identity", "Automatic reconnect identity changed")
+                self._write_reconnect_outcome(attempt, "connected")
+            attempt.peer_fingerprint = established.peer.fingerprint
 
             outcome = "approved" if established.newly_approved else "known"
             self._durable_append(
@@ -728,7 +991,8 @@ class PeerService:
 
             session = self._make_session(attempt, sock, established)
             with self._state_lock:
-                if self._slot is not attempt or self._closed or attempt.cancel.is_set():
+                if (self._slot is not attempt or self._closed or self._audit_failed
+                        or attempt.cancel.is_set()):
                     raise SparcError("operation_cancelled", "Connection attempt was canceled")
                 attempt.session = session
             session.start()
@@ -736,29 +1000,56 @@ class PeerService:
                 if (
                     self._slot is not attempt
                     or self._closed
+                    or self._audit_failed
                     or attempt.cancel.is_set()
                     or attempt.session is not session
                 ):
                     raise SparcError("operation_cancelled", "Connection attempt was canceled")
                 self._state = "connected"
-            self._emit_state("connected", "session_established", established.peer.endpoint, attempt.cancel)
+                if attempt.retry_chain is not None:
+                    elapsed_ns = max(0, time.perf_counter_ns() - attempt.retry_chain.started_ns)
+                    attempt.retry_chain = None
+            self._publish_owned_state(
+                attempt, "connected", "session_established", established.peer.endpoint
+            )
+            if retry_delay is not None:
+                self._emit_reconnect_metric(
+                    attempt, "reconnect_attempt", True,
+                    {"attempt": attempt.retry_index + 1, "delay_seconds": retry_delay},
+                )
+                self._emit_reconnect_metric(
+                    attempt, "reconnect_recovery", True,
+                    {"attempt": attempt.retry_index + 1, "elapsed_ns": elapsed_ns},
+                )
             adopted = True
         except SparcError as error:
-            failure = (
-                SparcError("operation_cancelled", "Connection attempt was canceled")
-                if attempt.cancel.is_set() or self._closed else error
-            )
+            with self._state_lock:
+                audit_failed = self._audit_failed
+            failure = (SparcError("audit_storage_failed", "Audit storage failed closed")
+                       if audit_failed or error.code == "audit_storage_failed" else
+                       SparcError("operation_cancelled", "Connection attempt was canceled")
+                       if attempt.cancel.is_set() or self._closed else error)
         except Exception:
             failure = SparcError("session_unusable", "Connection attempt could not be completed")
         finally:
             if not adopted:
-                attempt.cancel.set()
+                with self._state_lock:
+                    assigned_session = attempt.session is not None
+                if not assigned_session:
+                    attempt.cancel.set()
                 if attempt.sock is not None:
                     self._close_socket(attempt.sock)
-                self._finish_attempt(
-                    attempt,
-                    failure or SparcError("operation_cancelled", "Connection attempt was canceled"),
-                )
+                if retry_delay is not None and failure is not None:
+                    self._emit_reconnect_metric(
+                        attempt, "reconnect_attempt", False,
+                        {"attempt": attempt.retry_index + 1,
+                         "delay_seconds": retry_delay, "outcome": failure.code},
+                    )
+                if not assigned_session:
+                    self._finish_attempt(
+                        attempt,
+                        failure or SparcError("operation_cancelled", "Connection attempt was canceled"),
+                    )
             with self._state_lock:
                 if attempt.worker is not None:
                     self._workers.discard(attempt.worker)
@@ -767,22 +1058,71 @@ class PeerService:
         self._begin_durable_operation(attempt)
         self._append_audit(attempt, kind, metadata)
 
+    def _write_reconnect_outcome(self, attempt: _Attempt, state: str) -> None:
+        """Durably record one retry result for its exact reserved chain owner."""
+        chain = attempt.retry_chain
+        if chain is None or attempt.reconnect_outcome_attempted:
+            return
+        with self._state_lock:
+            if (
+                self._closed
+                or self._audit_failed
+                or self._slot is not attempt
+                or self._generation != attempt.generation
+                or chain.cancel.is_set()
+                or chain.epoch != self._reconnect_epoch
+            ):
+                raise SparcError("operation_cancelled", "Reconnect outcome owner is no longer active")
+            attempt.reconnect_outcome_attempted = True
+        try:
+            self._append_audit(attempt, "reconnect_outcome", {
+                "endpoint": _endpoint_metadata(chain.endpoint),
+                "state": state,
+                "attempt": attempt.retry_index + 1,
+            })
+        except Exception as exc:
+            raise SparcError(
+                "audit_storage_failed", "Reconnect outcome could not be durably recorded"
+            ) from exc
+
     def _append_audit(self, attempt: _Attempt, kind: str, metadata: dict):
         started = time.perf_counter_ns()
         try:
             result = self._audit.append(kind, metadata)
-        except Exception:
-            self._emit_operation_metric(
-                "audit", started, False, None, {"event": kind}, attempt.cancel,
-                elapsed_ns=max(0, time.perf_counter_ns() - started),
+        except Exception as exc:
+            owns_attempt = self._latch_audit_failure(attempt)
+            if owns_attempt:
+                self._emit_owned_metric(
+                    attempt, "audit", started, False, None, {"event": kind},
+                    elapsed_ns=max(0, time.perf_counter_ns() - started),
+                    allow_cancelled_owner=True,
+                )
+            raise SparcError("audit_storage_failed", "Audit storage failed closed") from exc
+        if attempt.retry_chain is not None or kind == "session_closed":
+            self._emit_owned_metric(
+                attempt, "audit", started, True, getattr(result, "encoded_bytes", None),
+                {"event": kind}, elapsed_ns=getattr(result, "elapsed_ns", None),
+                allow_cancelled_owner=(kind == "session_closed"),
             )
-            raise
-        self._emit_operation_metric(
-            "audit", started, True, getattr(result, "encoded_bytes", None),
-            {"event": kind}, attempt.cancel,
-            elapsed_ns=getattr(result, "elapsed_ns", None),
-        )
+        else:
+            self._emit_operation_metric(
+                "audit", started, True, getattr(result, "encoded_bytes", None),
+                {"event": kind}, attempt.cancel,
+                elapsed_ns=getattr(result, "elapsed_ns", None),
+            )
         return result
+
+    def _emit_attempt_operation_metric(self, attempt: _Attempt, operation: str,
+                                       started_ns: int, success: bool,
+                                       encoded_bytes: int | None, context: dict) -> None:
+        if attempt.retry_chain is None:
+            self._emit_operation_metric(
+                operation, started_ns, success, encoded_bytes, context, attempt.cancel
+            )
+            return
+        self._emit_owned_metric(
+            attempt, operation, started_ns, success, encoded_bytes, context
+        )
 
     def _emit_operation_metric(self, operation: str, started_ns: int, success: bool,
                                encoded_bytes: int | None, context: dict,
@@ -802,12 +1142,31 @@ class PeerService:
         except SparcError:
             pass
 
+    def _emit_reconnect_metric(self, attempt: _Attempt, operation: str,
+                               success: bool, context: dict) -> None:
+        """Publish a key-free retry diagnostic only for its exact slot owner."""
+        event = ServiceEvent("operation_metrics", {
+            "operation": operation,
+            "elapsed_ns": 0,
+            "success": success,
+            "context": dict(context),
+        })
+        with self._state_lock:
+            if (self._closed or self._slot is not attempt
+                    or self._generation != attempt.generation):
+                return
+            try:
+                self.events.put_nowait(event)
+            except queue.Full:
+                pass
+
     def _poll_session(self, attempt: _Attempt, session: ActiveSession) -> None:
         with self._state_lock:
             if (self._closed or self._slot is not attempt or attempt.session is not session
                     or attempt.cancel.is_set()):
                 return
             expired = self._receipts.expire(time.perf_counter_ns())
+        self._flush_rate_limit_audit()
         if expired:
             session._terminate(
                 SparcError("delivery_timeout", "Peer delivery confirmation deadline expired")
@@ -815,6 +1174,8 @@ class PeerService:
 
     def _begin_durable_operation(self, attempt: _Attempt) -> None:
         with self._state_lock:
+            if self._audit_failed:
+                raise SparcError("audit_storage_failed", "Audit storage failed closed")
             if self._closed or self._slot is not attempt or attempt.cancel.is_set():
                 raise SparcError("operation_cancelled", "Connection attempt was canceled")
 
@@ -829,7 +1190,9 @@ class PeerService:
                     attempt, owner["session"], established, record
                 ),
                 on_closed=lambda error: self._session_closed(attempt, error),
-                emit=self._emit,
+                emit=lambda event: self._emit_session_diagnostic(
+                    attempt, owner["session"], event
+                ),
                 on_written=lambda payload, protected: self._on_written(attempt, payload, protected),
                 on_poll=lambda: self._poll_session(attempt, owner["session"]),
             ),
@@ -838,6 +1201,47 @@ class PeerService:
         )
         owner["session"] = session
         return session
+
+    def _emit_session_diagnostic(self, attempt: _Attempt, session: ActiveSession,
+                                 event: ServiceEvent) -> None:
+        """Publish only the bounded inactivity diagnostic for its exact owner."""
+        if not isinstance(event, ServiceEvent) or event.kind != "operation_metrics":
+            return
+        data = event.data
+        if not isinstance(data, dict) or data.keys() != {
+            "operation", "elapsed_ns", "success", "context"
+        }:
+            return
+        context = data.get("context")
+        elapsed_ns = data.get("elapsed_ns")
+        if (
+            data.get("operation") != "peer_inactivity_detection"
+            or type(data.get("success")) is not bool
+            or data["success"] is not False
+            or type(elapsed_ns) is not int
+            or not 0 <= elapsed_ns <= 2**64 - 1
+            or not isinstance(context, dict)
+            or context != {"reason": "peer_inactivity"}
+        ):
+            return
+        safe_event = ServiceEvent("operation_metrics", {
+            "operation": "peer_inactivity_detection",
+            "elapsed_ns": elapsed_ns,
+            "success": False,
+            "context": {"reason": "peer_inactivity"},
+        })
+        with self._state_lock:
+            if (
+                self._closed
+                or self._slot is not attempt
+                or attempt.session is not session
+                or self._generation != attempt.generation
+            ):
+                return
+            try:
+                self.events.put_nowait(safe_event)
+            except queue.Full:
+                pass
 
     def _handle_payload(self, attempt: _Attempt, session: ActiveSession,
                         established: EstablishedSession, record) -> None:
@@ -965,47 +1369,96 @@ class PeerService:
                 self._receipts.fail_one(message_id, reason)
 
     def _session_closed(self, attempt: _Attempt, error: SparcError) -> None:
+        loss_ns = time.perf_counter_ns()
         with self._state_lock:
             if self._slot is not attempt:
                 return
+            audit_already_failed = self._audit_failed
             attempt.cancel.set()
             self._receipts.fail_all("Session closed before delivery confirmation")
             self._hash_ns_by_id.clear()
             if self._closed:
                 intended_state = "stopped"
+            elif audit_already_failed:
+                intended_state = "error"
             elif error.code == "operation_cancelled":
                 intended_state = "listening" if self._listener is not None else "stopped"
             else:
                 intended_state = "error"
 
         audit_error = None
-        try:
-            self._append_audit(attempt, "session_closed", {
-                "endpoint": _endpoint_metadata(attempt.endpoint),
-                "state": intended_state,
-                "code": error.code,
-                "reason": f"Session closed after {error.code}"[:120],
-            })
-        except SparcError as failure:
-            audit_error = failure
-        except Exception:
-            audit_error = SparcError("audit_storage_failed", "Session closure could not be durably recorded")
+        if (not audit_already_failed and error.code == "record_rate_limit"
+                and not self._record_rate_limit_rejection("record")):
+            audit_error = SparcError(
+                "audit_storage_failed", "Rate-limit rejection could not be durably recorded"
+            )
+            audit_already_failed = True
+        if not audit_already_failed:
+            try:
+                self._append_audit(attempt, "session_closed", {
+                    "endpoint": _endpoint_metadata(attempt.endpoint),
+                    "state": intended_state,
+                    "code": error.code,
+                    "reason": f"Session closed after {error.code}"[:120],
+                })
+            except SparcError as failure:
+                audit_error = failure
+            except Exception:
+                audit_error = SparcError("audit_storage_failed", "Session closure could not be durably recorded")
+
+        with self._state_lock:
+            audit_latched = self._audit_failed
+
+        if (
+            audit_error is None
+            and not audit_latched
+            and attempt.role is Role.INITIATOR
+            and attempt.retry_chain is None
+            and attempt.peer_fingerprint is not None
+            and error.code in {"tcp_loss", "delivery_timeout", "peer_inactivity"}
+        ):
+            delays = self._reconnect_policy.delays(error.code, explicit_stop=False)
+            if delays:
+                with self._state_lock:
+                    epoch = attempt.epoch
+                chain = _ReconnectChain(
+                    endpoint=attempt.endpoint,
+                    fingerprint=attempt.peer_fingerprint,
+                    started_ns=loss_ns,
+                    delays=delays,
+                    cancel=threading.Event(),
+                    epoch=epoch,
+                )
+                if self._reserve_retry(attempt, chain, 0):
+                    with self._state_lock:
+                        retry_owner = self._slot
+                    if retry_owner is not None:
+                        self._emit_reconnect_metric(
+                            retry_owner, "reconnect_scheduled", True,
+                            {"attempts": len(delays), "delays": list(delays)},
+                        )
+                    return
 
         with self._state_lock:
             if self._slot is not attempt:
                 return
+            audit_latched = self._audit_failed
             self._slot = None
+            if audit_latched or audit_error is not None or error.code == "audit_storage_failed":
+                self._audit_failed = True
             self._generation += 1
             self.events.advance_generation(self._generation)
             if self._closed:
                 self._state = "stopped"
-            elif audit_error is not None:
+            elif audit_latched or audit_error is not None or error.code == "audit_storage_failed":
                 self._state = "error"
             else:
                 self._state = intended_state
             state = self._state
             terminal_generation = self._generation
-        final_error = audit_error or error
+        final_error = (audit_error or
+                       (SparcError("audit_storage_failed", "Audit storage failed closed")
+                        if audit_latched else error))
         if not self._closed:
             self.events.publish_terminal(
                 ServiceEvent("state", {
@@ -1020,18 +1473,21 @@ class PeerService:
         with self._state_lock:
             if self._slot is not attempt:
                 return
+            audit_already_failed = self._audit_failed
             attempt.cancel.set()
             self._receipts.fail_all("Connection ended before delivery confirmation")
             self._hash_ns_by_id.clear()
             if self._closed:
                 intended_state = "stopped"
+            elif audit_already_failed:
+                intended_state = "error"
             elif error.code == "operation_cancelled":
                 intended_state = "listening" if self._listener is not None else "stopped"
             else:
                 intended_state = "error"
 
         audit_error = None
-        if error.code not in {
+        if not audit_already_failed and error.code not in {
             "operation_cancelled", "tcp_loss", "handshake_timeout", "pairing_timeout",
             "audit_storage_failed",
         }:
@@ -1043,23 +1499,65 @@ class PeerService:
             except SparcError as failure:
                 audit_error = failure
             except Exception:
-                audit_error = SparcError("audit_storage_failed", "Security rejection could not be durably recorded")
+                audit_error = SparcError(
+                    "audit_storage_failed",
+                    "Security rejection could not be durably recorded",
+                )
+
+        chain = attempt.retry_chain
+        if (
+            chain is not None
+            and not attempt.reconnect_outcome_attempted
+            and audit_error is None
+            and not audit_already_failed
+            and error.code not in {"operation_cancelled", "audit_storage_failed"}
+        ):
+            try:
+                self._write_reconnect_outcome(attempt, error.code)
+            except SparcError as failure:
+                audit_error = failure
+
+        if (
+            chain is not None
+            and error.code == "tcp_loss"
+            and audit_error is None
+            and not audit_already_failed
+            and attempt.retry_index + 1 < len(chain.delays)
+        ):
+            if self._reserve_retry(attempt, chain, attempt.retry_index + 1):
+                with self._state_lock:
+                    retry_owner = self._slot
+                if retry_owner is not None:
+                    self._emit_reconnect_metric(
+                        retry_owner, "reconnect_scheduled", True,
+                        {"attempts": len(chain.delays),
+                         "next_attempt": attempt.retry_index + 2,
+                         "delays": list(chain.delays)},
+                    )
+                return
 
         with self._state_lock:
             if self._slot is not attempt:
                 return
             self._slot = None
+            audit_latched = self._audit_failed
+            if audit_latched or audit_error is not None or error.code == "audit_storage_failed":
+                self._audit_failed = True
             self._generation += 1
             self.events.advance_generation(self._generation)
             if self._closed:
                 self._state = "stopped"
-            elif audit_error is not None:
+            elif audit_latched or audit_error is not None or error.code == "audit_storage_failed":
                 self._state = "error"
             else:
                 self._state = intended_state
             state = self._state
             terminal_generation = self._generation
-        final_error = audit_error or error
+        final_error = (
+            SparcError("audit_storage_failed", "Audit storage failed closed")
+            if audit_latched or error.code == "audit_storage_failed"
+            else audit_error or error
+        )
         if not self._closed:
             self.events.publish_terminal(
                 ServiceEvent("state", {
@@ -1070,13 +1568,77 @@ class PeerService:
                 terminal_generation,
             )
 
-    def _is_current(self, attempt: _Attempt) -> bool:
+    def _reserve_retry(self, owner: _Attempt, chain: _ReconnectChain, index: int) -> bool:
+        """Atomically hand an owned terminal attempt to the next retry slot."""
+        with self._state_lock:
+            if (
+                self._closed
+                or self._audit_failed
+                or self._slot is not owner
+                or self._generation != owner.generation
+                or owner.epoch != self._reconnect_epoch
+                or chain.cancel.is_set()
+                or chain.epoch != self._reconnect_epoch
+                or index >= len(chain.delays)
+            ):
+                return False
+            self._generation += 1
+            self.events.advance_generation(self._generation)
+            retry = _Attempt(
+                generation=self._generation,
+                role=Role.INITIATOR,
+                endpoint=chain.endpoint,
+                cancel=threading.Event(),
+                epoch=chain.epoch,
+                retry_chain=chain,
+                retry_index=index,
+            )
+            self._slot = retry
+            self._state = "connecting"
+        try:
+            self._publish_owned_state(
+                retry, "connecting", "reconnect_scheduled", chain.endpoint
+            )
+            self._start_coordinator(retry)
+        except Exception as exc:
+            error = exc if isinstance(exc, SparcError) else SparcError(
+                "session_unusable", "Could not start reconnect coordinator"
+            )
+            self._finish_attempt(retry, error)
+            return False
+        return True
+
+    def _retry_is_current(self, attempt: _Attempt) -> bool:
+        chain = attempt.retry_chain
+        if chain is None:
+            return self._is_current(attempt)
         with self._state_lock:
             return (
                 not self._closed
+                and not self._audit_failed
+                and not attempt.cancel.is_set()
+                and not chain.cancel.is_set()
+                and chain.epoch == self._reconnect_epoch
+                and self._slot is attempt
+                and self._generation == attempt.generation
+            )
+
+    def _is_current(self, attempt: _Attempt) -> bool:
+        with self._state_lock:
+            current = (
+                not self._closed
+                and not self._audit_failed
                 and not attempt.cancel.is_set()
                 and self._slot is attempt
                 and self._generation == attempt.generation
+            )
+            chain = attempt.retry_chain
+            if chain is None:
+                return current
+            return (
+                current
+                and not chain.cancel.is_set()
+                and chain.epoch == self._reconnect_epoch
             )
 
     def _on_written(self, attempt: _Attempt, payload: dict, protected: ProtectedRecord) -> None:
