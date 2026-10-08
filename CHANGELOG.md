@@ -14,6 +14,7 @@
 
 - Accountable peer messaging service with manual IPv4 listeners, fingerprint pairing, bounded delivery receipts and operation metrics.
 - Rolling connection limits, paced authenticated records, signed idle heartbeats and finite authenticated reconnection.
+- Runnable Connection, Chat and Audit desktop tabs with explicit fingerprint approval, Unicode and multiline chat, public record inspection, and cancellable checkpoint verification.
 
 ### Security
 
@@ -39,3 +40,6 @@
 
 - Latch audit failures before diagnostics and stop inbound handshakes even when cancellation races cleanup.
 - Keep authenticated retry progression and Stop responsive when the ordinary event queue is full.
+- Clear stale authenticated-peer details after disconnect; keep chat history bounded and in memory, and ignore late worker results when tabs close.
+- Scope audit verification to a captured committed prefix, with cancellation across reads and checkpoint publication.
+- Keep public identity fingerprints and existing protocol/security version semantics unchanged.

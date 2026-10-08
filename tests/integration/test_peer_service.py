@@ -59,6 +59,15 @@ def test_bidirectional_unicode_delivery_is_audited(peer_pair):
         assert report.valid
 
 
+def test_message_events_include_local_origin(peer_pair):
+    sender, receiver = peer_pair.alice, peer_pair.bob
+    message_id = sender.send_text("origin contract")
+    sent = wait_event(sender, "message", message_id)
+    received = wait_event(receiver, "message", message_id)
+    assert sent.data["origin"] == "outgoing"
+    assert received.data["origin"] == "incoming"
+
+
 def test_failed_receive_audit_prevents_ack_and_display(peer_pair, monkeypatch):
     sender, receiver = peer_pair.alice, peer_pair.bob
     original_append = receiver._audit.append

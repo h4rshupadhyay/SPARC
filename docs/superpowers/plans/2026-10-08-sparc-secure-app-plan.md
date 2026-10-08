@@ -28,7 +28,7 @@ C1 defines: `Endpoint(ip: str, port: int)`, `Role` enum with INITIATOR/RESPONDER
 
 C2 defines `Timings(hash_ns, sign_ns, encrypt_ns, decrypt_ns, verify_ns)` with optional integer fields; `Inspection(message_id, sequence, sha256, computed_sha256, signature, ciphertext, nonce, tag, plaintext_bytes, timings)` with public bytes/metadata only; `ProtectedRecord(frame: bytes, inspection: Inspection | None)` and `OpenedRecord(payload: dict, inspection: Inspection | None, sequence: int | None = None, direction: int | None = None)`. Finished/control records may omit an inspector; chat/benchmark records supply it. C5f adds defaulted authenticated coordinates for every application kind, including acknowledgments; finished records retain None coordinates and older construction remains compatible.
 
-C5 defines `ServiceEvent(kind: str, data: dict)` and `DeliveryReceipt(message_id: str, started_ns: int, finished_ns: int, plaintext_bytes: int, characters: int, frame_bytes: int)`. Message events carry `message_id`, `text`, `inspection`, and direction; pairing events carry `request_id`, candidate fingerprint, and own fingerprint. State events carry state/reason/endpoint. `operation_metrics` events carry `operation`, `elapsed_ns`, `success`, `encoded_bytes` (optional), and public `context` metadata for handshake, loss detection, reconnect and audit spans. Handshake spans state whether user approval time is included; loss detection measures last valid activity to declared loss. No event carries private/session keys. Later tabs consume these names unchanged.
+C5 defines `ServiceEvent(kind: str, data: dict)` and `DeliveryReceipt(message_id: str, started_ns: int, finished_ns: int, plaintext_bytes: int, characters: int, frame_bytes: int)`. Message events carry `message_id`, `text`, `inspection`, wire direction, and local `origin` (`outgoing` from the writer or `incoming` from the reader); pairing events carry `request_id`, candidate fingerprint, and own fingerprint. State events carry state/reason/endpoint. `operation_metrics` events carry `operation`, `elapsed_ns`, `success`, `encoded_bytes` (optional), and public `context` metadata for handshake, loss detection, reconnect and audit spans. Handshake spans state whether user approval time is included; loss detection measures last valid activity to declared loss. No event carries private/session keys. Later tabs consume these names unchanged.
 
 ## Execution workflow
 
@@ -505,9 +505,9 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Interfaces:** Produce `SparcApp(root: Tk, service: PeerService)` with `.notebook`, `.add_tab(title: str, widget: ttk.Frame) -> None`, `.handle_event(event: ServiceEvent) -> None`, `.close() -> None`; `JobController(root: Tk, on_result: Callable[[str,object],None]).start(work: Callable[[Event,Callable[[str,object],None]],object]) -> None`, `.cancel() -> None`, `.close() -> None`
 
-- [ ] **Fixed test oracle:** `test_close_ignores_late_worker_events`: no destroyed-widget access or new callbacks. `test_jobs_one_active_and_queue_bound_64`: reject concurrent start, bounded cancel-aware result puts; close wakes worker. `test_event_dispatch_stays_on_tk_thread`
-- [ ] **Luna implementation:** Main-thread after polling only, app tab.handle_event forwarding and tab.close before service/root teardown, idempotent close. Jobs use result queue64, one thread, per-run generation, reject stale results; no worker widget calls. Polling100ms, joins2s after cancellation; Sol reviews any worker that cannot meet finite cancellation
-- [ ] **Controller red/green:** `python -m pytest tests/gui/test_app.py tests/unit/test_jobs.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_close_ignores_late_worker_events`: no destroyed-widget access or new callbacks. `test_jobs_one_active_and_queue_bound_64`: reject concurrent start, bounded cancel-aware result puts; close wakes worker. `test_event_dispatch_stays_on_tk_thread`
+- [x] **Luna implementation:** Main-thread after polling only, app tab.handle_event forwarding and tab.close before service/root teardown, idempotent close. Jobs use result queue64, one thread, per-run generation, reject stale results; no worker widget calls. Polling100ms, joins2s after cancellation; Sol reviews any worker that cannot meet finite cancellation
+- [x] **Controller red/green:** C7 gate `540 passed` in 95.55s without warnings; C7 review re-run and GUI layout/interaction evidence recorded below.
 
 **Exclusions:** tab contents or cryptography.
 
@@ -517,11 +517,11 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Prerequisites:** C7a,C5d.
 
-**Interfaces:** Produce `ConnectionTab(parent: ttk.Notebook, service: PeerService).handle_event(event: ServiceEvent) -> None`, `.close() -> None`; consume publicservice and psutil.net_if_addrs
+**Interfaces:** Produce `ConnectionTab(parent: ttk.Notebook, service: PeerService).handle_event(event: ServiceEvent) -> None`, `.close() -> None`; consume publicservice and psutil.net_if_addrs; `connected_peer() -> dict | None` supplies a copied current authenticated fingerprint and Endpoint, without identity inference from remembered IPs
 
-- [ ] **Fixed test oracle:** `test_listening_port_is_not_configured_port_until_started`: active status separate. `test_interfaces_have_labels_and_copyable_endpoints`: full IP/port, hostname, allinterface0.0.0.0 label. `test_pairing_shows_immutable_own_and_peer_fingerprints`: correctrequestID approve/reject, changedblocked. `test_literal_ipv4_and_port_validation`:1-65535, no silent configuration override. `test_forget_peer_requires_explicit_action_and_audit`: audit failure preserves pin; active peer forgetting is refused
-- [ ] **Luna implementation:** BindIP default0.0.0.0 port47655, editable reachablepeerIPv4/port; Start/Stop/Connect/Disconnect and explicit Forget control. Use immutable ServiceEvent pairing snapshots and fingerprint Copy. Add fixed service `.forget_peer(fingerprint: str) -> None` wrapper; it durably audits explicit trust change before TrustStore.forget and refuses active-session identity forgetting
-- [ ] **Controller red/green:** `python -m pytest tests/gui/test_connection_view.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_listening_port_is_not_configured_port_until_started`: active status separate. `test_interfaces_have_labels_and_copyable_endpoints`: full IP/port, hostname, allinterface0.0.0.0 label. `test_pairing_shows_immutable_own_and_peer_fingerprints`: correctrequestID approve/reject, changedblocked. `test_literal_ipv4_and_port_validation`:1-65535, no silent configuration override. `test_forget_peer_requires_explicit_action_and_audit`: audit failure preserves pin; active peer forgetting is refused
+- [x] **Luna implementation:** BindIP default0.0.0.0 port47655, editable reachablepeerIPv4/port; Start/Stop/Connect/Disconnect and explicit Forget control. Use immutable ServiceEvent pairing snapshots and fingerprint Copy; invalidate approval on every non-approval state. Display the connected identity from `connected_peer()`, never infer it from IP. Add fixed service `.forget_peer(fingerprint: str) -> None` wrapper; an idle-only private reservation excludes concurrent networking, and existing `trust_changed` records capture `forget_requested` before TrustStore.forget and `forgotten` after success. Refuse occupied sessions/handshakes/retries or listener startup; never hold the state lock across storage. Audit failures remain sticky, with no rollback claim after removal
+- [x] **Controller red/green:** C7 gate `540 passed` in 95.55s without warnings; focused layout checks: 3 passed in 0.79s.
 
 **Exclusions:** GUI socket access or trust-any.
 
@@ -533,9 +533,9 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Interfaces:** Produce `ChatTab(parent: ttk.Notebook, service: PeerService).handle_event(event: ServiceEvent) -> None`, `.close() -> None`
 
-- [ ] **Fixed test oracle:** `test_send_disabled_until_connected`, `test_unicode_and_line_breaks_preserved`, `test_history_evicts_after_500`: memory count500 with notice. `test_inspector_shows_hash_match_signature_ciphertext_and_microseconds`: publicnonce/tag/b64ct/sig,size, sender/receiverdigests, no keyfields. `test_pending_verified_unconfirmed_states`
-- [ ] **Luna implementation:** Multiline input explicitSend, errors from prepare/send surfaced. Display only validated incomingevents, original/recoveredtext in-memory inspector. Evict associated detail objects alongside history. No text persistence; aggregate benchmarkprogress does not become chat bubbles
-- [ ] **Controller red/green:** `python -m pytest tests/gui/test_chat_view.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_send_disabled_until_connected`, `test_unicode_and_line_breaks_preserved`, `test_history_evicts_after_500`: memory count500 with notice. `test_inspector_shows_hash_match_signature_ciphertext_and_microseconds`: publicnonce/tag/b64ct/sig,size, sender/receiverdigests, no keyfields. `test_pending_verified_unconfirmed_states`
+- [x] **Luna implementation:** Multiline input explicitSend, errors from prepare/send surfaced. Display only validated incomingevents, original/recoveredtext in-memory inspector. Classify using local message origin, index by origin plus message ID, and reconcile early writer/delivery events with the returned send ID without duplication or downgrading verified status. Evict associated detail objects alongside history. No text persistence; aggregate benchmarkprogress does not become chat bubbles
+- [x] **Controller red/green:** C7 gate `540 passed` in 95.55s without warnings; Chat inspector reachability covered by focused layout and interaction evidence.
 
 **Exclusions:** analysis or audit tab.
 
@@ -547,9 +547,9 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Interfaces:** Produce `AuditTab(parent: ttk.Notebook, service: PeerService).handle_event(event: ServiceEvent) -> None`, `.close() -> None`; add service `verify_audit(checkpoint: Path | None = None) -> AuditReport`, `export_audit_checkpoint(path: Path) -> None` wrappers without exposing identity keys
 
-- [ ] **Fixed test oracle:** `test_audit_view_reports_first_failure_and_checkpoint_status`: validcount/head/reason visible. `test_verify_runs_off_tk_thread_and_close_cancels`: JobController and late-result rejection. `test_audit_timings_and_bytes_are_separate_metrics`
-- [ ] **Luna implementation:** Worker-backed verify/export using publicwrappers and file dialogs. Display available-chain-only vs independently anchoredstatus; show verification records/s, appendelapsedns→us, bytes/event. Checkpoint choice explicit
-- [ ] **Controller red/green:** `python -m pytest tests/gui/test_audit_view.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_audit_view_reports_first_failure_and_checkpoint_status`: validcount/head/reason visible. `test_verify_runs_off_tk_thread_and_close_cancels`: JobController and late-result rejection. `test_audit_timings_and_bytes_are_separate_metrics`
+- [x] **Luna implementation:** Worker-backed verify/export using publicwrappers and file dialogs. Display available-chain-only vs independently anchoredstatus; show verification records/s, appendelapsedns→us, bytes/event. Checkpoint choice explicit
+- [x] **Controller red/green:** C7 gate `540 passed` in 95.55s without warnings; audit snapshot scope and minimum-window reachability verified.
 
 **Exclusions:** automatic audit repair or raw private identity access.
 
@@ -561,13 +561,15 @@ C5 review amendments: C5c narrowly adds public TrustStore.snapshot and its trust
 
 **Interfaces:** Normal `python -m sparc [--data-dir PATH]` creates root/service and threecoretabs; --check remains lazy and GUI-free
 
-- [ ] **Fixed test oracle:** `test_default_launch_wires_three_core_tabs` patched launch asserts the core names Connection/Chat/Audit are present (additional registered tabs are allowed). `test_missing_tk_is_actionable`: clear dependency error, not opaque traceback. `test_check_remains_usable_without_tk_or_tshark`
-- [ ] **Luna implementation:** Wire normallaunch and close. Document Windows/Linux venv/pinnedpackages, Tk install, literalLANIP, firewall chosenport, clientisolation and two instancesdistinctdata directories. Controller visuallychecks resizing, pairing, Unicode/newlines, listenerstatus/error, close duringwork with appropriate GUI permission
-- [ ] **Controller red/green:** `python -m pytest tests/integration/test_gui_cli.py tests/gui -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_default_launch_wires_three_core_tabs` patched launch asserts the core names Connection/Chat/Audit are present (additional registered tabs are allowed). `test_missing_tk_is_actionable`: clear dependency error, not opaque traceback. `test_check_remains_usable_without_tk_or_tshark`
+- [x] **Luna implementation:** Wire normallaunch and close. Document Windows/Linux venv/pinnedpackages, Tk install, literalLANIP, firewall chosenport, clientisolation and two instancesdistinctdata directories. Controller visuallychecks resizing, pairing, Unicode/newlines, listenerstatus/error, close duringwork with appropriate GUI permission
+- [x] **Controller red/green:** C7 gate `540 passed` in 95.55s without warnings. Single-process localhost GUI smoke covered bidirectional Unicode/newline messages, audit operations, resizing, and close during work.
 
 **Exclusions:** analysis/traffic tabs until owning plans.
 
 **Sol 6.1 milestone gate:** Controller runs `python -m pytest tests/unit/test_jobs.py tests/integration/test_gui_cli.py tests/gui -q`; Sol reviews the contracts, failure paths and accumulated diff before dependent units proceed. Conditional controller commit: `feat: add Tkinter connection chat and audit views`.
+
+**C7 verification record:** Sol's C7 re-review passed. Controller reports 540 tests passed in 95.55s without warnings and 3 focused layout tests passed in 0.79s. Direct-window captures confirmed Approve/Reject at 800×640, audit actions and wrapped head, and Chat security details through its scrollbar. This was a single-process localhost GUI smoke, not independent-process or physical-device evidence; Windows behavior remains unverified. C7 commit reference: pending C7 commit.
 
 ### C8: Two-process simulation, plaintext baseline and evidence guide
 

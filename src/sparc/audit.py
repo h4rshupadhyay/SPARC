@@ -11,6 +11,7 @@ import re
 import secrets
 import threading
 import time
+from contextlib import contextmanager
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -32,6 +33,7 @@ from .storage import _sync_parent_directory, atomic_write, secure_private_store
 _LINE_LIMIT = 131072
 _CHECKPOINT_LIMIT = 8192
 _ZERO_HASH = "0" * 64
+_LOCK_POLL_SECONDS = 0.1
 _ID_RE = re.compile(r"[0-9a-f]{32}\Z")
 _HEX64_RE = re.compile(r"[0-9a-f]{64}\Z")
 _SAFE_REASONS = {
@@ -49,6 +51,25 @@ _SAFE_REASONS = {
 
 def _reason(code: str, detail: str | None = None) -> str:
     return f"{code}: {detail or _SAFE_REASONS.get(code, 'audit verification failed')}"
+
+
+def _check_cancelled(cancelled) -> None:
+    if cancelled is not None and cancelled():
+        raise SparcError("operation_cancelled", "Audit operation was cancelled")
+
+
+@contextmanager
+def _cancelable_lock(lock: threading.Lock, cancelled):
+    acquired = False
+    try:
+        while not acquired:
+            _check_cancelled(cancelled)
+            acquired = lock.acquire(timeout=_LOCK_POLL_SECONDS)
+        _check_cancelled(cancelled)
+        yield
+    finally:
+        if acquired:
+            lock.release()
 
 
 def _report(
@@ -167,9 +188,18 @@ def _validate_checkpoint(path: Path, public_key: bytes) -> dict:
     return body
 
 
-def verify_log(path: Path, public_key: bytes, checkpoint: Path | None = None) -> AuditReport:
+def _verify_log_impl(
+    path: Path,
+    public_key: bytes,
+    checkpoint: Path | None = None,
+    *,
+    cancelled=None,
+    _prefix_bytes: int | None = None,
+    _expected_head: tuple[str, int, str] | None = None,
+) -> AuditReport:
     """Stream and verify an available audit chain and optional signed prefix anchor."""
     started = time.perf_counter_ns()
+    _check_cancelled(cancelled)
     if not isinstance(public_key, bytes) or len(public_key) != 32:
         return _fail_report(started, "invalid_schema", detail="trusted public key is invalid")
 
@@ -181,6 +211,7 @@ def verify_log(path: Path, public_key: bytes, checkpoint: Path | None = None) ->
             return _fail_report(started, exc.code)
         except (OSError, TypeError, ValueError):
             return _fail_report(started, "invalid_schema", detail="checkpoint is unavailable")
+        _check_cancelled(cancelled)
 
     verified = 0
     physical_line = 0
@@ -188,12 +219,32 @@ def verify_log(path: Path, public_key: bytes, checkpoint: Path | None = None) ->
     expected_log_id = None
     checkpoint_checked = False
     checkpoint_number = checkpoint_body["last_record_number"] if checkpoint_body is not None else None
+    bytes_read = 0
     try:
-        with Path(path).open("rb") as stream:
+        with Path(path).open("rb", buffering=0) as stream:
+            if _prefix_bytes is not None and os.fstat(stream.fileno()).st_size < _prefix_bytes:
+                return _fail_report(
+                    started, "audit_verification_failed",
+                    detail="captured audit prefix was truncated",
+                )
             while True:
-                raw_line = stream.readline(_LINE_LIMIT + 1)
+                _check_cancelled(cancelled)
+                if _prefix_bytes is not None:
+                    remaining = _prefix_bytes - bytes_read
+                    if remaining <= 0:
+                        break
+                    raw_line = stream.readline(min(_LINE_LIMIT + 1, remaining))
+                else:
+                    raw_line = stream.readline(_LINE_LIMIT + 1)
+                _check_cancelled(cancelled)
                 if not raw_line:
+                    if _prefix_bytes is not None and bytes_read < _prefix_bytes:
+                        return _fail_report(
+                            started, "audit_verification_failed", verified_records=verified,
+                            detail="captured audit prefix ended before its committed boundary",
+                        )
                     break
+                bytes_read += len(raw_line)
                 physical_line += 1
                 if len(raw_line) > _LINE_LIMIT:
                     return _fail_report(
@@ -214,6 +265,7 @@ def verify_log(path: Path, public_key: bytes, checkpoint: Path | None = None) ->
                         first_failed_record=physical_line, checkpoint_checked=checkpoint_checked,
                         detail="audit log contains a blank line",
                     )
+                _check_cancelled(cancelled)
                 try:
                     _object_depth(raw, 5)
                     record = parse_object(raw)
@@ -228,6 +280,7 @@ def verify_log(path: Path, public_key: bytes, checkpoint: Path | None = None) ->
                         expected_log_id,
                     )
                 except SparcError as exc:
+                    _check_cancelled(cancelled)
                     return _fail_report(
                         started, exc.code, verified_records=verified,
                         first_failed_record=physical_line,
@@ -256,6 +309,7 @@ def verify_log(path: Path, public_key: bytes, checkpoint: Path | None = None) ->
 
                 previous_hash = record["record_hash"]
                 verified += 1
+                _check_cancelled(cancelled)
 
     except FileNotFoundError:
         return _fail_report(
@@ -269,6 +323,26 @@ def verify_log(path: Path, public_key: bytes, checkpoint: Path | None = None) ->
             checkpoint_checked=checkpoint_checked,
             detail="audit log is unreadable",
         )
+
+    _check_cancelled(cancelled)
+    if _expected_head is not None:
+        captured_log_id, expected_number, expected_hash = _expected_head
+        if checkpoint_body is not None and checkpoint_body["log_id"] != captured_log_id:
+            return _fail_report(
+                started, "audit_chain_mismatch", verified_records=verified,
+                checkpoint_checked=False,
+                detail="checkpoint log_id does not match the captured audit log",
+            )
+        if (
+            verified != expected_number
+            or previous_hash != expected_hash
+            or (verified > 0 and expected_log_id != captured_log_id)
+        ):
+            return _fail_report(
+                started, "audit_chain_mismatch", verified_records=verified,
+                checkpoint_checked=checkpoint_checked,
+                detail="verified prefix does not match the captured committed head",
+            )
 
     if checkpoint_body is not None:
         if checkpoint_number > verified:
@@ -337,6 +411,7 @@ class AuditLog:
         self._record_number = 0
         self._head_hash = _ZERO_HASH
         self._log_id = None
+        self._committed_bytes = 0
 
         try:
             secure_private_store(self.path)
@@ -358,6 +433,7 @@ class AuditLog:
                         "Existing empty audit log has no signed zero-head checkpoint",
                     )
                 self._record_number, self._head_hash, self._log_id = self._read_head()
+                self._committed_bytes = self.path.stat().st_size
                 if self._record_number == 0:
                     with self.checkpoint_path.open("rb") as stream:
                         raw_checkpoint = stream.read(_CHECKPOINT_LIMIT + 1)
@@ -387,6 +463,7 @@ class AuditLog:
                 stream.flush()
                 os.fsync(stream.fileno())
             _sync_parent_directory(self.path.parent)
+            self._committed_bytes = 0
         except SparcError as exc:
             if exc.code == "audit_verification_failed":
                 raise
@@ -413,6 +490,30 @@ class AuditLog:
             return 0, _ZERO_HASH, None
         body = last_record["body"]
         return body["record_number"], last_record["record_hash"], body["log_id"]
+
+    def head_snapshot(self, *, cancelled=None) -> dict:
+        """Return a copied public view of the durably committed writer head."""
+        with _cancelable_lock(self._lock, cancelled):
+            return {
+                "log_id": self._log_id,
+                "last_record_number": self._record_number,
+                "last_record_hash": self._head_hash,
+                "identity_fingerprint": self.identity.fingerprint,
+            }
+
+    def verify(self, checkpoint: Path | None = None, *, cancelled=None) -> AuditReport:
+        """Verify the committed prefix captured under the append lock."""
+        with _cancelable_lock(self._lock, cancelled):
+            prefix_bytes = self._committed_bytes
+            expected_head = (self._log_id, self._record_number, self._head_hash)
+        return verify_log(
+            self.path,
+            self.identity.public_bytes,
+            checkpoint,
+            cancelled=cancelled,
+            _prefix_bytes=prefix_bytes,
+            _expected_head=expected_head,
+        )
 
     def append(self, kind: str, metadata: dict) -> AuditAppend:
         """Validate, sign, append and fsync one record before advancing the head."""
@@ -445,11 +546,12 @@ class AuditLog:
             elapsed = max(0, time.perf_counter_ns() - started)
             self._record_number = body["record_number"]
             self._head_hash = record["record_hash"]
+            self._committed_bytes += len(line)
             return AuditAppend(record=record, elapsed_ns=elapsed, encoded_bytes=len(line))
 
-    def export_checkpoint(self, path: Path) -> None:
+    def export_checkpoint(self, path: Path, *, cancelled=None) -> None:
         """Sign and durably publish the current head as retained and selected copies."""
-        with self._lock:
+        with _cancelable_lock(self._lock, cancelled):
             if self._poisoned:
                 raise SparcError("audit_storage_failed", "Audit log is poisoned after a storage failure")
             try:
@@ -480,6 +582,7 @@ class AuditLog:
                 "last_record_hash": self._head_hash,
                 "identity_fingerprint": self.identity.fingerprint,
             }
+            _check_cancelled(cancelled)
             try:
                 signature = self.identity.private_key.sign(CHECKPOINT_DOMAIN + canonical(body))
             except Exception as exc:
@@ -490,15 +593,53 @@ class AuditLog:
             )
 
             try:
+                _check_cancelled(cancelled)
                 atomic_write(retained, encoded, private=True, secure_parent=True)
                 if not same_retained:
+                    _check_cancelled(cancelled)
                     atomic_write(selected, encoded, private=True, secure_parent=False)
-            except (OSError, SparcError) as exc:
+            except SparcError as exc:
+                if exc.code == "operation_cancelled":
+                    raise
                 self._poisoned = True
                 raise SparcError(
                     "audit_storage_failed",
                     "Checkpoint publication failed; the audit log is poisoned",
                 ) from exc
+            except OSError as exc:
+                self._poisoned = True
+                raise SparcError(
+                    "audit_storage_failed",
+                    "Checkpoint publication failed; the audit log is poisoned",
+                ) from exc
+            _check_cancelled(cancelled)
+
+
+def verify_log(
+    path: Path,
+    public_key: bytes,
+    checkpoint: Path | None = None,
+    *,
+    cancelled=None,
+    _prefix_bytes: int | None = None,
+    _expected_head: tuple[str, int, str] | None = None,
+) -> AuditReport:
+    """Verify a chain and give cancellation precedence over every report path."""
+    try:
+        report = _verify_log_impl(
+            path,
+            public_key,
+            checkpoint,
+            cancelled=cancelled,
+            _prefix_bytes=_prefix_bytes,
+            _expected_head=_expected_head,
+        )
+    except SparcError as exc:
+        if exc.code != "operation_cancelled":
+            _check_cancelled(cancelled)
+        raise
+    _check_cancelled(cancelled)
+    return report
 
 
 __all__ = ["AuditAppend", "AuditLog", "AuditReport", "verify_log"]

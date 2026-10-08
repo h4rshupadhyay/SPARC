@@ -24,31 +24,47 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--data-dir", type=Path, help="use an explicit SPARC data directory")
     args = parser.parse_args(argv)
 
-    if not args.check:
-        print(
-            "The graphical interface is not available yet. Run `python -m sparc --check` "
-            "for diagnostics.",
-            file=sys.stderr,
-        )
-        return 2
+    if args.check:
+        try:
+            data_dir = resolve_data_dir(args.data_dir)
+            identity = load_identity(data_dir)
+        except SparcError as exc:
+            print(f"SPARC check failed: {exc.message}", file=sys.stderr)
+            return 1
+        except OSError as exc:
+            print(f"SPARC check failed: {exc}", file=sys.stderr)
+            return 1
+
+        print(f"SPARC: {_distribution_version('sparc')}")
+        print(f"Python: {platform.python_version()}")
+        print(f"cryptography: {_distribution_version('cryptography')}")
+        print(f"psutil: {_distribution_version('psutil')}")
+        print(f"PyCryptodome: {_distribution_version('pycryptodome')}")
+        print(f"PyShark: {_distribution_version('pyshark')}")
+        print(f"Public fingerprint: {identity.fingerprint}")
+        return 0
 
     try:
         data_dir = resolve_data_dir(args.data_dir)
-        identity = load_identity(data_dir)
-    except SparcError as exc:
-        print(f"SPARC check failed: {exc.message}", file=sys.stderr)
-        return 1
-    except OSError as exc:
-        print(f"SPARC check failed: {exc}", file=sys.stderr)
-        return 1
+        # Import the GUI only for normal launch so --check stays Tk-free.
+        from .gui.app import launch
 
-    print(f"SPARC: {_distribution_version('sparc')}")
-    print(f"Python: {platform.python_version()}")
-    print(f"cryptography: {_distribution_version('cryptography')}")
-    print(f"psutil: {_distribution_version('psutil')}")
-    print(f"PyCryptodome: {_distribution_version('pycryptodome')}")
-    print(f"PyShark: {_distribution_version('pyshark')}")
-    print(f"Public fingerprint: {identity.fingerprint}")
+        launch(data_dir)
+    except ImportError as exc:
+        if getattr(exc, "name", None) not in {"tkinter", "_tkinter"}:
+            raise
+        print(
+            "SPARC GUI requires Tk. Install python3-tk on Debian or Ubuntu, or install "
+            "CPython for Windows with Tcl/Tk support, then run `python -m sparc` again.",
+            file=sys.stderr,
+        )
+        return 2
+    except SparcError as exc:
+        if exc.code == "gui_unavailable":
+            print(f"SPARC GUI unavailable: {exc.message}", file=sys.stderr)
+            return 2
+        print(f"SPARC launch failed: {exc.message}", file=sys.stderr)
+        return 1
     return 0
 
 

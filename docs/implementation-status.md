@@ -14,7 +14,7 @@ commits exist.
 | C4 Audit | C4a-C4d | verified |
 | C5 Peer service | C5a-C5g | verified |
 | C6 Availability | C6a-C6d | verified |
-| C7 GUI | C7a-C7e | pending |
+| C7 GUI | C7a-C7e | verified |
 | C8 Demonstration and baseline | C8a-C8c | pending |
 | A1 Sensitivity analysis | A1a-A1c | pending |
 | A2 Local benchmarks and exports | A2a-A2e | pending |
@@ -52,15 +52,15 @@ commits exist.
 | C5e | verified | send/writer/receipt suite: 29 passed; stale-owner receipt invalidation regression fixed | af7a5a1 |
 | C5f | verified | receive/model/record/writer/send suite: 57 passed; signed peer evidence verified | af7a5a1 |
 | C5g | verified | full suite: 404 passed; Sol review corrections and scoped gate passed | af7a5a1 |
-| C6a | verified | Missing-module RED; rolling source/global/capacity tests: 3 passed | this milestone |
-| C6b | verified | Focused 7 passed; 44 affected tests passed; audit-failure active-channel regression fixed | this milestone |
-| C6c | verified | Heartbeat, pacing maintenance, writer and rate-limit suite: 28 passed | this milestone |
-| C6d | verified | Full suite: 453 passed; audit-failure and full-queue regressions pass; Sol spec/security gate passed | this milestone |
-| C7a | pending | Pending | pending |
-| C7b | pending | Pending | pending |
-| C7c | pending | Pending | pending |
-| C7d | pending | Pending | pending |
-| C7e | pending | Pending | pending |
+| C6a | verified | Missing-module RED; rolling source/global/capacity tests: 3 passed | 9c7c8eb |
+| C6b | verified | Focused 7 passed; 44 affected tests passed; audit-failure active-channel regression fixed | 9c7c8eb |
+| C6c | verified | Heartbeat, pacing maintenance, writer and rate-limit suite: 28 passed | 9c7c8eb |
+| C6d | verified | Full suite: 453 passed; audit-failure and full-queue regressions pass; Sol spec/security gate passed | 9c7c8eb |
+| C7a | verified | Full C7 gate: 540 passed in 95.55s without warnings; finite bounded jobs and late-result shutdown covered | pending C7 commit |
+| C7b | verified | Full C7 gate: 540 passed; Connection state, approval, forget and reachability regressions pass | pending C7 commit |
+| C7c | verified | Full C7 gate: 540 passed; delivery reconciliation, bounded in-memory history, inspector and close cleanup pass | pending C7 commit |
+| C7d | verified | Full C7 gate: 540 passed; stable-prefix snapshots, cancellation and checkpoint publication pass | pending C7 commit |
+| C7e | verified | Full C7 gate: 540 passed; lazy CLI launch, actionable Tk setup and platform guide pass | pending C7 commit |
 | C8a | pending | Pending | pending |
 | C8b | pending | Pending | pending |
 | C8c | pending | Pending | pending |
@@ -90,4 +90,4 @@ commits exist.
 
 ## Unresolved decisions
 
-C1-C6 Sol spec/quality reviews passed. Full suite: 453 passed without warnings. C7 GUI implementation is next.
+C1-C6 Sol spec/quality reviews passed. C7 controller gate: 540 passed in 95.55s without warnings; focused layout checks: 3 passed in 0.79s. Sol's C7 re-review passed. Controller also completed a real single-process localhost GUI smoke with bidirectional Unicode/newline messages, audit operations, resizing, and close during work; direct-window captures confirmed approval controls, audit actions/head wrapping, and chat security details were reachable. This evidence covers the local GUI path only; Windows and physical-device behavior remain unverified and belong to later validation. C7 commit remains pending.

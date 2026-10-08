@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 import base64
 import queue
+import re
 import secrets
 import socket
 import threading
@@ -12,7 +13,7 @@ import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from ..audit import AuditLog
+from ..audit import AuditLog, AuditReport
 from ..identity import TrustStore, load_identity
 from ..models import (
     DeliveryReceipt,
@@ -205,6 +206,7 @@ class PeerService:
         self._listener_thread: threading.Thread | None = None
         self._listener_starting = False
         self._listener_starting_socket: socket.socket | None = None
+        self._forget_owner: object | None = None
         self._listener_generation = 0
         self._slot: _Attempt | None = None
         self._generation = 0
@@ -229,6 +231,131 @@ class PeerService:
 
     def trusted_peers(self) -> list[dict]:
         return self._trust.snapshot()
+
+    def _audit_cancel_predicate(self, cancel: threading.Event | None):
+        return lambda: self._cancel.is_set() or (cancel is not None and cancel.is_set())
+
+    def audit_head(self, *, cancel: threading.Event | None = None) -> dict:
+        """Return a copied public snapshot of the durably committed audit head."""
+        return self._audit.head_snapshot(cancelled=self._audit_cancel_predicate(cancel))
+
+    def verify_audit(
+        self,
+        checkpoint: Path | None = None,
+        *,
+        cancel: threading.Event | None = None,
+    ) -> AuditReport:
+        """Verify the audit prefix captured by AuditLog for this operation."""
+        return self._audit.verify(
+            checkpoint,
+            cancelled=self._audit_cancel_predicate(cancel),
+        )
+
+    def export_audit_checkpoint(
+        self,
+        path: Path,
+        *,
+        cancel: threading.Event | None = None,
+    ) -> None:
+        """Export a checkpoint unless sticky audit failure has latched."""
+        with self._state_lock:
+            if self._audit_failed:
+                raise SparcError("audit_storage_failed", "Audit storage failed closed")
+        try:
+            self._audit.export_checkpoint(
+                Path(path),
+                cancelled=self._audit_cancel_predicate(cancel),
+            )
+        except SparcError as exc:
+            if exc.code == "audit_storage_failed":
+                self._latch_audit_failure()
+            raise
+
+    def connected_peer(self) -> dict | None:
+        """Return the authenticated peer bound to the current live session."""
+        with self._state_lock:
+            attempt = self._slot
+            if (
+                self._closed
+                or self._audit_failed
+                or self._state != "connected"
+                or attempt is None
+                or self._slot is not attempt
+                or attempt.generation != self._generation
+                or attempt.session is None
+                or attempt.cancel.is_set()
+                or not attempt.peer_fingerprint
+            ):
+                return None
+            return {
+                "fingerprint": attempt.peer_fingerprint,
+                "endpoint": Endpoint(attempt.endpoint.ip, attempt.endpoint.port),
+            }
+
+    def forget_peer(self, fingerprint: str) -> None:
+        """Explicitly and durably forget one idle, remembered peer identity."""
+        if not isinstance(fingerprint, str) or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None:
+            raise SparcError(
+                "invalid_fingerprint",
+                "Fingerprint must be lowercase 64-character hexadecimal",
+            )
+
+        token = object()
+        with self._state_lock:
+            if self._audit_failed:
+                raise SparcError("audit_storage_failed", "Audit storage failed closed")
+            if self._closed:
+                raise SparcError("operation_cancelled", "Peer service is closed")
+            if self._slot is not None or self._forget_owner is not None or self._listener_starting:
+                raise SparcError("busy", "Peer service is busy with another operation")
+            self._forget_owner = token
+
+        try:
+            record = next(
+                (peer for peer in self.trusted_peers() if peer.get("fingerprint") == fingerprint),
+                None,
+            )
+            if record is None or not isinstance(record.get("endpoint"), Endpoint):
+                raise SparcError("invalid_state", "Remembered peer was not found")
+            endpoint = record["endpoint"]
+            metadata = {
+                "fingerprint": fingerprint,
+                "endpoint": _endpoint_metadata(endpoint),
+                "state": "forget_requested",
+            }
+
+            self._check_forget_owner(token)
+            self._append_unowned_audit("trust_changed", metadata)
+
+            # This recheck is the mutation authorization boundary. Once the
+            # trust write begins, close cannot revoke or roll it back.
+            self._check_forget_owner(token)
+            self._trust.forget(fingerprint)
+
+            self._append_unowned_audit("trust_changed", {
+                **metadata,
+                "state": "forgotten",
+            })
+        finally:
+            with self._state_lock:
+                if self._forget_owner is token:
+                    self._forget_owner = None
+
+    def _check_forget_owner(self, token: object) -> None:
+        with self._state_lock:
+            if self._forget_owner is not token:
+                raise SparcError("operation_cancelled", "Forget operation no longer owns the reservation")
+            if self._audit_failed:
+                raise SparcError("audit_storage_failed", "Audit storage failed closed")
+            if self._closed:
+                raise SparcError("operation_cancelled", "Peer service is closed")
+
+    def _append_unowned_audit(self, kind: str, metadata: dict) -> None:
+        try:
+            self._audit.append(kind, metadata)
+        except Exception as exc:
+            self._latch_audit_failure()
+            raise SparcError("audit_storage_failed", "Audit storage failed closed") from exc
 
     def send_text(self, text: str, *, run_id: str | None = None) -> str:
         """Reserve, durably record, and enqueue one outbound application message."""
@@ -339,6 +466,8 @@ class PeerService:
                 raise SparcError("audit_storage_failed", "Audit storage failed closed")
             if self._closed:
                 raise SparcError("operation_cancelled", "Peer service is closed")
+            if self._forget_owner is not None:
+                raise SparcError("busy", "A peer forget operation is in progress")
             if self._listener is not None or self._listener_starting:
                 raise SparcError("busy", "A listener is already active")
             self._listener_generation += 1
@@ -498,6 +627,8 @@ class PeerService:
                 raise SparcError("audit_storage_failed", "Audit storage failed closed")
             if self._closed:
                 raise SparcError("operation_cancelled", "Peer service is closed")
+            if self._forget_owner is not None:
+                raise SparcError("busy", "A peer forget operation is in progress")
             if self._slot is not None:
                 raise SparcError("busy", "A connection attempt or session is already active")
             self._reconnect_epoch += 1
@@ -751,7 +882,7 @@ class PeerService:
             busy = False
             with self._state_lock:
                 if (self._closed or self._audit_failed or listener_cancel.is_set()
-                        or self._slot is not None):
+                        or self._slot is not None or self._forget_owner is not None):
                     busy = True
                 else:
                     self._generation += 1
@@ -1356,6 +1487,7 @@ class PeerService:
                     "inspection": record.inspection,
                     "direction": record.direction,
                     "sequence": record.sequence,
+                    "origin": "incoming",
                 })
         self._emit(event, attempt.cancel)
 
@@ -1668,6 +1800,7 @@ class PeerService:
                 "text": payload["text"],
                 "inspection": inspection,
                 "direction": 0 if attempt.role is Role.INITIATOR else 1,
+                "origin": "outgoing",
             })
         self._emit(event, attempt.cancel)
 
