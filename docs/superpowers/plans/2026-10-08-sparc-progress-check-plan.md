@@ -79,6 +79,12 @@ The controller batches independent read/check commands, and runs focused plus af
 
 For documentation-only tasks, use the supplied content/link checklist and existing relevant runtime regression checks. Do not add tests that merely mirror the documentation or manufacture a failing test when no runtime behavior changes.
 
+### Use additional skills only when needed
+
+Use available skills when they materially improve the current task: for example, Impeccable for interface design or Superbrains for difficult reasoning, if installed and applicable. These examples do not require loading them during package or cryptography work. Discover a named skill at the relevant milestone; if unavailable, record that fact and continue with the installed skills and approved contracts rather than installing extra tooling by default.
+
+Read each selected skill's `SKILL.md` once and only the referenced material needed for the task. Announce its first use. Give the worker the applicable instructions and task context, not the whole skill catalog or conversation. Reuse the existing Luna or Sol worker according to its role; a skill alone does not justify another agent or review. Record the skill and its concrete purpose briefly in the ledger. Preserve the prescribed tests, security gates and user-selected model roles; do not claim token savings without measured usage.
+
 ### Luna dispatch contents
 
 Each coding assignment includes these fields, copied from its lettered task:
