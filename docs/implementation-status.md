@@ -10,7 +10,7 @@ commits exist.
 | --- | --- | --- |
 | C1 Shared types, encoding, identity and trust | C1a-C1d | verified |
 | C2 Protocol and cryptography | C2a-C2f | verified |
-| C3 Handshake | C3a-C3d | pending |
+| C3 Handshake | C3a-C3d | verified |
 | C4 Audit | C4a-C4d | pending |
 | C5 Peer service | C5a-C5g | pending |
 | C6 Availability | C6a-C6d | pending |
@@ -31,16 +31,16 @@ commits exist.
 | C1b | verified | pytest encoding/models: 32 passed, no warnings | 38d4d58 |
 | C1c | verified | pytest tests/unit -q: 42 passed; invalid-fixture serialization corrected without weakening checks | 38d4d58 |
 | C1d | verified | unit/integration suite: 67 passed; review regressions fixed; --check and pip check successful | 38d4d58 |
-| C2a | verified | framing/models/encoding: 42 passed; invalid fixture corrected, bounds retained | uncommitted |
-| C2b | verified | messages/framing/encoding: 66 passed; signed fixture corrected | uncommitted |
-| C2c | verified | crypto/messages/encoding: 84 passed | uncommitted |
-| C2d | verified | finished/crypto/messages/framing: 77 passed | uncommitted |
-| C2e | verified | outbound/finished/crypto/messages/framing: 81 passed | uncommitted |
-| C2f | verified | full unit/integration suite: 172 passed; Sol review and hash timing regression fix passed | uncommitted |
-| C3a | pending | Pending | pending |
-| C3b | pending | Pending | pending |
-| C3c | pending | Pending | pending |
-| C3d | pending | Pending | pending |
+| C2a | verified | framing/models/encoding: 42 passed; invalid fixture corrected, bounds retained | 317b919 |
+| C2b | verified | messages/framing/encoding: 66 passed; signed fixture corrected | 317b919 |
+| C2c | verified | crypto/messages/encoding: 84 passed | 317b919 |
+| C2d | verified | finished/crypto/messages/framing: 77 passed | 317b919 |
+| C2e | verified | outbound/finished/crypto/messages/framing: 81 passed | 317b919 |
+| C2f | verified | full unit/integration suite: 172 passed; Sol review and hash timing regression fix passed | 317b919 |
+| C3a | verified | handshake/records/finished/trust: 77 passed | uncommitted |
+| C3b | verified | initiator/helpers/hello/framing: 41 passed; Sol role-boundary ruling approved | uncommitted |
+| C3c | verified | responder/initiator/hello/finished: 54 passed, no warnings | uncommitted |
+| C3d | verified | full unit/integration suite: 219 passed; phase regression fixed, Sol review passed | uncommitted |
 | C4a | pending | Pending | pending |
 | C4b | pending | Pending | pending |
 | C4c | pending | Pending | pending |
@@ -90,4 +90,4 @@ commits exist.
 
 ## Unresolved decisions
 
-C1 and C2 Sol spec/quality reviews passed; full unit/integration suite: 172 passed. No unresolved contract decisions.
+C1-C3 Sol spec/quality reviews passed; full unit/integration suite: 219 passed. No unresolved contract decisions.

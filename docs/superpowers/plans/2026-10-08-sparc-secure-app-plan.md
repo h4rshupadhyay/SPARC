@@ -62,10 +62,10 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce all C1/C2/C5 cross-module records listed above. `Identity.private_key: Ed25519PrivateKey`; `Inspection` fields other than `message_id: str`, `sequence: int`, `plaintext_bytes: int`, `timings: Timings` are digest strings or public bytes (`sha256/computed_sha256: str`, remaining binary fields `bytes`). `ServiceEvent.data: dict`; frozen `Limits` defaults match master
 
-- [ ] **Fixed test oracle:** `test_limits_are_frozen_and_match_spec`: assert `text_bytes == 16384`, `frame_bytes == 131072`, queue 1024 and production deadlines match master; mutation raises `FrozenInstanceError`. `test_event_and_inspection_have_no_secret_fields`: compare dataclass field names to the listed schema
-- [ ] **Luna implementation:** Set setuptools src layout, Python>=3.10; core pins cryptography50.0.2/psutil7.2.2; analysis pycryptodome3.24.0, traffic pyshark0.6, dev pytest8.4.2. Requirements install editable extras as previously defined. Ignore identities, `.venv`, `.demo`, nonfixture captures/databases/exports. Create package markers when each later task creates its package. Set the single package-version source in pyproject.toml to `0.1.0.dev0`; create the master-defined Unreleased changelog and compact task/milestone ledger
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_models.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
-- [ ] **History content checklist:** `CHANGELOG.md` has Unreleased categories for significant/security changes; the ledger references all existing task IDs/milestones, status/test-evidence/commit-ref fields and concise unresolved decisions. Verify file contents/links directly; no new tests merely mirror these documents.
+- [x] **Fixed test oracle:** `test_limits_are_frozen_and_match_spec`: assert `text_bytes == 16384`, `frame_bytes == 131072`, queue 1024 and production deadlines match master; mutation raises `FrozenInstanceError`. `test_event_and_inspection_have_no_secret_fields`: compare dataclass field names to the listed schema
+- [x] **Luna implementation:** Set setuptools src layout, Python>=3.10; core pins cryptography50.0.2/psutil7.2.2; analysis pycryptodome3.24.0, traffic pyshark0.6, dev pytest8.4.2. Requirements install editable extras as previously defined. Ignore identities, `.venv`, `.demo`, nonfixture captures/databases/exports. Create package markers when each later task creates its package. Set the single package-version source in pyproject.toml to `0.1.0.dev0`; create the master-defined Unreleased changelog and compact task/milestone ledger
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_models.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **History content checklist:** `CHANGELOG.md` has Unreleased categories for significant/security changes; the ledger references all existing task IDs/milestones, status/test-evidence/commit-ref fields and concise unresolved decisions. Verify file contents/links directly; no new tests merely mirror these documents.
 
 **Exclusions:** identity I/O, GUI, crypto implementations.
 
@@ -77,9 +77,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `canonical(value: dict) -> bytes`, `parse_object(raw: bytes) -> dict`
 
-- [ ] **Fixed test oracle:** `test_canonical_exact_bytes`: `canonical({"b":2,"a":"✓"}) == b'{"a":"\\u2713","b":2}'`. `test_rejects_invalid_json_types` parameterizes duplicate keys, NaN, floats, booleans, null, nonobjects, invalid UTF-8; all raise `SparcError`
-- [ ] **Luna implementation:** Use the exact signed JSON options in spec §4. Strict duplicate hook and recursive accepted-type validation; no silent normalization. Preserve Unicode when parsing
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_encoding.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_canonical_exact_bytes`: `canonical({"b":2,"a":"✓"}) == b'{"a":"\\u2713","b":2}'`. `test_rejects_invalid_json_types` parameterizes duplicate keys, NaN, floats, booleans, null, nonobjects, invalid UTF-8; all raise `SparcError`
+- [x] **Luna implementation:** Use the exact signed JSON options in spec §4. Strict duplicate hook and recursive accepted-type validation; no silent normalization. Preserve Unicode when parsing
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_encoding.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** message schemas or base64 rules (C2b).
 
@@ -91,9 +91,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `resolve_data_dir(override: Path | None) -> Path`, `load_identity(data_dir: Path) -> Identity`; internal `atomic_write(path: Path, data: bytes, private: bool = True) -> None` for later stores
 
-- [ ] **Fixed test oracle:** `test_identity_is_persistent`: repeated load equal raw32 public keys and full64hex SHA256 fingerprint. `test_corrupt_identity_is_not_replaced`: preserve original corrupt bytes and raise. `test_platform_paths_and_owner_modes`: Windows LOCALAPPDATA/SPARC, XDG/fallback Linux paths, override precedence and Linux0700dir/0600file
-- [ ] **Luna implementation:** Create keys only if absent, serialize cryptography Ed25519 raw keys in validated persistent schema, atomic same-directory temp replace, owner-only Linux modes. Windows inherited user-profile ACL assumption stays explicit
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_identity.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_identity_is_persistent`: repeated load equal raw32 public keys and full64hex SHA256 fingerprint. `test_corrupt_identity_is_not_replaced`: preserve original corrupt bytes and raise. `test_platform_paths_and_owner_modes`: Windows LOCALAPPDATA/SPARC, XDG/fallback Linux paths, override precedence and Linux0700dir/0600file
+- [x] **Luna implementation:** Create keys only if absent, serialize cryptography Ed25519 raw keys in validated persistent schema, atomic same-directory temp replace, owner-only Linux modes. Windows inherited user-profile ACL assumption stays explicit
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_identity.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** peer trust or audit initialization.
 
@@ -105,9 +105,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `TrustStore(data_dir).check(public_key: bytes, endpoint: Endpoint) -> str`, `.pin(public_key: bytes, endpoint: Endpoint, label: str = "") -> None`, `.forget(fingerprint: str) -> None`; `python -m sparc --check --data-dir PATH`
 
-- [ ] **Fixed test oracle:** `test_changed_endpoint_key_is_blocked`: initial unknown, pin known, substitute changed, original recognized at new endpoint; store unchanged until explicit forget. `test_corrupt_trust_is_not_empty`: bytes preserved, startup raises. `test_check_needs_no_tk_or_packet_tools`: public fingerprint persists between subprocesses; no private bytes/output, no GUI/PyShark import
-- [ ] **Luna implementation:** Reuse atomic storage and strict schemas. Diagnose versions/public fingerprint on --check. Reserve normal GUI launch for C7e; no premature GUI dependency
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_trust.py tests/integration/test_check_cli.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_changed_endpoint_key_is_blocked`: initial unknown, pin known, substitute changed, original recognized at new endpoint; store unchanged until explicit forget. `test_corrupt_trust_is_not_empty`: bytes preserved, startup raises. `test_check_needs_no_tk_or_packet_tools`: public fingerprint persists between subprocesses; no private bytes/output, no GUI/PyShark import
+- [x] **Luna implementation:** Reuse atomic storage and strict schemas. Diagnose versions/public fingerprint on --check. Reserve normal GUI launch for C7e; no premature GUI dependency
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_trust.py tests/integration/test_check_cli.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** implicit trust replacement or automatic re-pair.
 
@@ -123,9 +123,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `Frame(kind: int, body: bytes, length: int)`, `pack_frame(kind: int, body: bytes) -> bytes`, `read_frame(sock: socket.socket, cancel: Event, deadline: float | None, limits: Limits) -> Frame`
 
-- [ ] **Fixed test oracle:** `test_partial_reads_round_trip` uses socket pair/split writes; original kind/body/length exact. `test_prefix_rejected_before_body_read`: zero or >128KiB prefix rejected without oversized body read/allocation. `test_json_frame_8k_limit`, `test_cancel_and_partial_frame_timeout`: bounded 1s cancel polling and connected partial10s test via shortened Limits
-- [ ] **Luna implementation:** uint32 big-endian N, one byte type1-6, enforce 8KiB handshake JSON and128KiB total before body allocation. An idle connected socket starts incomplete-frame deadline only after first prefix byte
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_framing.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_partial_reads_round_trip` uses socket pair/split writes; original kind/body/length exact. `test_prefix_rejected_before_body_read`: zero or >128KiB prefix rejected without oversized body read/allocation. `test_json_frame_8k_limit`, `test_cancel_and_partial_frame_timeout`: bounded 1s cancel polling and connected partial10s test via shortened Limits
+- [x] **Luna implementation:** uint32 big-endian N, one byte type1-6, enforce 8KiB handshake JSON and128KiB total before body allocation. An idle connected socket starts incomplete-frame deadline only after first prefix byte
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_framing.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** record cryptography or socket writes outside serialized writer.
 
@@ -137,9 +137,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `prepare_text(text: str, message_id: str, run_id: str | None = None) -> tuple[dict, int]`, `validate_application(payload: dict, signed: bool = True) -> None`, `signing_projection(payload: dict) -> dict`, `decode_base64(value: str, length: int) -> bytes`
 
-- [ ] **Fixed test oracle:** `test_unicode_hash_and_byte_bound`: exact UTF8 SHA256/byte_count, 16384 valid/16385 invalid. `test_lone_surrogate_is_local_error`: domain error. `test_empty_text_rejected`. `test_schema_rejections`: unknown fields/kinds/file records, bool integers, noncanonical b64 or lowercase hex length mismatch rejected. `test_projection_omits_only_text`: chat/benchmark exclude text/signature, ack/ping/pong include all unsigned fields
-- [ ] **Luna implementation:** Fixed schemas §5: chat,benchmark(runid),ack(status verified),ping,pong; exact field names and length bounds. Canonical strict base64. Hash call span only; no hash timing includes encoding. Empty/lone-surrogate locally rejected
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_messages.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_unicode_hash_and_byte_bound`: exact UTF8 SHA256/byte_count, 16384 valid/16385 invalid. `test_lone_surrogate_is_local_error`: domain error. `test_empty_text_rejected`. `test_schema_rejections`: unknown fields/kinds/file records, bool integers, noncanonical b64 or lowercase hex length mismatch rejected. `test_projection_omits_only_text`: chat/benchmark exclude text/signature, ack/ping/pong include all unsigned fields
+- [x] **Luna implementation:** Fixed schemas §5: chat,benchmark(runid),ack(status verified),ping,pong; exact field names and length bounds. Canonical strict base64. Hash call span only; no hash timing includes encoding. Empty/lone-surrogate locally rejected
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_messages.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** AES or live signatures.
 
@@ -151,9 +151,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `derive_traffic_keys(secret: bytes, transcript: bytes) -> tuple[bytes,bytes,bytes]`; `record_aad(kind: int, session_id: bytes, direction: int, sequence: int, length: int) -> bytes`; `message_context(session_id: bytes, direction: int, sequence: int, projection: dict) -> bytes`
 
-- [ ] **Fixed test oracle:** `test_hkdf_exact_inputs` compares independent cryptography HKDF SHA256 length64/saltSHA256T/info domain+sid; keys32+32 unequal, sid=SHA256sessiondomain+T. `test_aad_and_message_context_exact_bytes` assert domains andBE sequence/length plus canonical projection
-- [ ] **Luna implementation:** Implement fixed spec domain prefixes and integer/range validation. Nonce construction remains four zero bytes plus the eight-byte sequence. No key exports
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_crypto.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_hkdf_exact_inputs` compares independent cryptography HKDF SHA256 length64/saltSHA256T/info domain+sid; keys32+32 unequal, sid=SHA256sessiondomain+T. `test_aad_and_message_context_exact_bytes` assert domains andBE sequence/length plus canonical projection
+- [x] **Luna implementation:** Implement fixed spec domain prefixes and integer/range validation. Nonce construction remains four zero bytes plus the eight-byte sequence. No key exports
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_crypto.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** handshake state or codec counters.
 
@@ -165,9 +165,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce public `SessionCodec(identity: Identity, peer_key: bytes, role: Role, keys: tuple[bytes,bytes], session_id: bytes)` with `.protect(payload: dict, frame_type: int = 6) -> ProtectedRecord`, `.open(frame: Frame) -> OpenedRecord`; implement types4/5 first. Define read-only `.session_id: bytes`, counters send/receive next=0
 
-- [ ] **Fixed test oracle:** `test_finished_consumes_sequence_zero`: role-specific type4/5 opens finished, each counter then1, inspector None. `test_finished_role_or_sequence_mismatch`: reject wrong finished kind/direction/gap/duplicate and insufficient encrypted body. `test_counter_exhaustion_never_reuses_nonce`
-- [ ] **Luna implementation:** Store per-direction keys/counters, role mapping and AESGCM helpers privately. No app record accepted before matching finished. Public app methods explicitly reject unsupported-unimplemented app until C2e/f. Failed validation never advances receive counter; failed session unusable
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_record_finished.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_finished_consumes_sequence_zero`: role-specific type4/5 opens finished, each counter then1, inspector None. `test_finished_role_or_sequence_mismatch`: reject wrong finished kind/direction/gap/duplicate and insufficient encrypted body. `test_counter_exhaustion_never_reuses_nonce`
+- [x] **Luna implementation:** Store per-direction keys/counters, role mapping and AESGCM helpers privately. No app record accepted before matching finished. Public app methods explicitly reject unsupported-unimplemented app until C2e/f. Failed validation never advances receive counter; failed session unusable
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_record_finished.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** live handshake or application implementation.
 
@@ -179,9 +179,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Implement application branch of `SessionCodec.protect`; consumes `signing_projection`, `message_context`, `record_aad`; returns existing `ProtectedRecord`
 
-- [ ] **Fixed test oracle:** `test_protect_exact_signature_context_and_nonce`: independently verify Ed signature over domain/sid/dir/seq/projection; noncezero4+seq8 andseq starts1. `test_inspection_contains_digest_ciphertext_tag_and_timings`: SHA256 exact, AESGCM ct/tag independent decrypt, no key fields. `test_separate_direction_keys`
-- [ ] **Luna implementation:** Validate unsigned payload, Edsign canonical projection, addcanonical64bytesigb64, encrypt complete canonical envelope, pack bounded frame. N included inAAD before seal. Time sign/encrypt primitive calls only
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_records_protect.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_protect_exact_signature_context_and_nonce`: independently verify Ed signature over domain/sid/dir/seq/projection; noncezero4+seq8 andseq starts1. `test_inspection_contains_digest_ciphertext_tag_and_timings`: SHA256 exact, AESGCM ct/tag independent decrypt, no key fields. `test_separate_direction_keys`
+- [x] **Luna implementation:** Validate unsigned payload, Edsign canonical projection, addcanonical64bytesigb64, encrypt complete canonical envelope, pack bounded frame. N included inAAD before seal. Time sign/encrypt primitive calls only
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_records_protect.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** receive branch or socket writes.
 
@@ -193,9 +193,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Complete application branch of `.open(frame) -> OpenedRecord`; consumes signed schema/hash/signature context
 
-- [ ] **Fixed test oracle:** `test_unicode_round_trip_and_receiver_inspector`: exact text/digest/size+computed hash match. `test_replay_is_rejected`: opening same frame twice raises. Parameterized `test_tamper_fails_closed`: altered tag,ciphertext,AAD,sid,seq and independently validGCM with badsig/hash/size each error; no plaintext event or receive counter advance. `test_out_of_order_fails`
-- [ ] **Luna implementation:** Check session/type/next seq, AESGCM decrypt, strictparse/schema, recomputehash/size, Ed verify, thenadvance counter and produce inspector. Failed crypto timings labeled failure, never successful average; buffers not published before all checks
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_records.py tests/unit/test_records_protect.py tests/unit/test_record_finished.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_unicode_round_trip_and_receiver_inspector`: exact text/digest/size+computed hash match. `test_replay_is_rejected`: opening same frame twice raises. Parameterized `test_tamper_fails_closed`: altered tag,ciphertext,AAD,sid,seq and independently validGCM with badsig/hash/size each error; no plaintext event or receive counter advance. `test_out_of_order_fails`
+- [x] **Luna implementation:** Check session/type/next seq, AESGCM decrypt, strictparse/schema, recomputehash/size, Ed verify, thenadvance counter and produce inspector. Failed crypto timings labeled failure, never successful average; buffers not published before all checks
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_records.py tests/unit/test_records_protect.py tests/unit/test_record_finished.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** GUI publication or application receipts.
 
@@ -211,9 +211,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `PeerCandidate(public_key: bytes, fingerprint: str, endpoint: Endpoint)`, `EstablishedSession(codec: SessionCodec, peer: PeerCandidate, newly_approved: bool, transcript_hash: str)`; `make_hello(identity: Identity, kind: str) -> tuple[dict, X25519PrivateKey]`; `validate_hello(payload: dict, signed: bool) -> None`; `transcript(client: dict, server_unsigned: dict) -> bytes`; `approve_candidate(candidate: PeerCandidate, trust: TrustStore, approve: Callable[[PeerCandidate],bool]) -> bool`
 
-- [ ] **Fixed test oracle:** `test_transcript_exact_canonical_fields`, `test_roles_do_not_share_signature_domain`, `test_fresh_hello_random_and_ephemeral`, `test_changed_pin_never_prompts`: full schemas strict, keys/random each 32 bytes, peer fingerprint SHA256 of raw 32 public bytes; changed blocked before callback
-- [ ] **Luna implementation:** Immutable candidates; strip only server signature for T, strict hello and client auth schema; unknown callback after signature validation enforced by role units. Fresh X25519 keys plus secure 32-byte random values each call. `approve_candidate` returns whether newly approved, no writes
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_handshake.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_transcript_exact_canonical_fields`, `test_roles_do_not_share_signature_domain`, `test_fresh_hello_random_and_ephemeral`, `test_changed_pin_never_prompts`: full schemas strict, keys/random each 32 bytes, peer fingerprint SHA256 of raw 32 public bytes; changed blocked before callback
+- [x] **Luna implementation:** Immutable candidates; strip only server signature for T, strict hello and client auth schema; unknown callback after signature validation enforced by role units. Fresh X25519 keys plus secure 32-byte random values each call. `approve_candidate` returns whether newly approved, no writes
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_handshake.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** network choreography, persistent pins.
 
@@ -221,13 +221,15 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Files:** Create `src/sparc/protocol/handshake_initiator.py`; test `tests/unit/test_handshake_initiator.py`
 
+**Shared-helper allowance:** C3b also modifies `handshake_transcript.py` only for `_check_deadline`, `_bounded_approval`, `_send_frame` and their imports. Its test file owns bounded approval, late-result, cancellation and partial-send checks. C3c consumes these helpers unchanged.
+
 **Prerequisites:** C3a.
 
 **Interfaces:** Produce `run_initiator(sock: socket.socket, identity: Identity, trust: TrustStore, approve: Callable[[PeerCandidate],bool], cancel: Event, limits: Limits, overall_deadline: float) -> EstablishedSession`; consume C2/C3a
 
-- [ ] **Fixed test oracle:** `test_initiator_validates_before_approval` fake protocol peer asserts a bad server signature never prompts; `test_initiator_rejects_changed_key`, `test_initiator_rejects_reflected_signature`, `test_finished_hash_matches_transcript`, `test_rejected_or_canceled_pairing_never_pins`
-- [ ] **Luna implementation:** Exact §4 connector steps CH→validated server hello→approved client auth→derived codec→verify responder finished→send initiator finished. Match transcript hash. Initial exchange deadline 20 seconds; responder-finished wait 150 seconds; local pairing 120 seconds; overall 300 seconds; cancel polling at most 1 second. No own pin writes
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_handshake_initiator.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_initiator_validates_before_approval` fake protocol peer asserts a bad server signature never prompts; `test_initiator_rejects_changed_key`, `test_initiator_rejects_reflected_signature`, `test_finished_hash_matches_transcript`, `test_rejected_or_canceled_pairing_never_pins`
+- [x] **Luna implementation:** Exact §4 connector steps CH→validated server hello→approved client auth→derived codec→verify responder finished→send initiator finished. Match transcript hash. Initial exchange deadline 20 seconds; responder-finished wait 150 seconds; local pairing 120 seconds; overall 300 seconds; cancel polling at most 1 second. No own pin writes
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_handshake_initiator.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** responder or service connected state.
 
@@ -239,9 +241,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce `run_responder(sock: socket.socket, identity: Identity, trust: TrustStore, approve: Callable[[PeerCandidate],bool], cancel: Event, limits: Limits, overall_deadline: float) -> EstablishedSession`
 
-- [ ] **Fixed test oracle:** `test_responder_rejects_stale_client_auth` signatures from other T fail before approval; `test_zero_exchange_is_rejected`; `test_client_finished_requires_correct_keys_and_hash`; `test_responder_timeout_and_cancel_no_pin`
-- [ ] **Luna implementation:** Exact CH→signed server hello→verified client auth→approval→derive→responder finished→verify initiator finished. Deadlines: initial 20, client-auth 150, local pairing 120, final finished 10 and overall 300 seconds; reject all-zero shared secrets. Callback receives immutable candidate
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_handshake_responder.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_responder_rejects_stale_client_auth` signatures from other T fail before approval; `test_zero_exchange_is_rejected`; `test_client_finished_requires_correct_keys_and_hash`; `test_responder_timeout_and_cancel_no_pin`
+- [x] **Luna implementation:** Exact CH→signed server hello→verified client auth→approval→derive→responder finished→verify initiator finished. Deadlines: initial 20, client-auth 150, local pairing 120, final finished 10 and overall 300 seconds; reject all-zero shared secrets. Callback receives immutable candidate
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_handshake_responder.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** initiator or trust store writes.
 
@@ -253,9 +255,9 @@ Signed checkpoint outer object contains exactly `body` and canonical Base64 `sig
 
 **Interfaces:** Produce preserved `perform_handshake(sock: socket.socket, role: Role, identity: Identity, trust: TrustStore, approve: Callable[[PeerCandidate],bool], cancel: Event, limits: Limits) -> EstablishedSession`; re-export C3a types
 
-- [ ] **Fixed test oracle:** `test_known_and_unknown_real_socket_handshakes`: role workers socket pair, matching sid/hash and separate directional keys, unknown each callback, known none. `test_hello_field_tampering_fails`, `test_all_failure_paths_leave_no_pins`, `test_reconnect_uses_fresh_session`
-- [ ] **Luna implementation:** Dispatcher computes monotonic overall deadline once then role function; no fallback or algorithm negotiation. Handle cancel/error clearly; no service events or trust commit
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_handshake.py tests/unit/test_handshake_initiator.py tests/unit/test_handshake_responder.py tests/integration/test_handshake_sockets.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_known_and_unknown_real_socket_handshakes`: role workers socket pair, matching sid/hash and separate directional keys, unknown each callback, known none. `test_hello_field_tampering_fails`, `test_all_failure_paths_leave_no_pins`, `test_reconnect_uses_fresh_session`
+- [x] **Luna implementation:** Dispatcher computes monotonic overall deadline once then role function; no fallback or algorithm negotiation. Handle cancel/error clearly; no service events or trust commit
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_handshake.py tests/unit/test_handshake_initiator.py tests/unit/test_handshake_responder.py tests/integration/test_handshake_sockets.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** service or gui integration.
 
