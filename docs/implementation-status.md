@@ -9,7 +9,7 @@ commits exist.
 | Milestone | Tasks | Status |
 | --- | --- | --- |
 | C1 Shared types, encoding, identity and trust | C1a-C1d | verified |
-| C2 Protocol and cryptography | C2a-C2f | pending |
+| C2 Protocol and cryptography | C2a-C2f | verified |
 | C3 Handshake | C3a-C3d | pending |
 | C4 Audit | C4a-C4d | pending |
 | C5 Peer service | C5a-C5g | pending |
@@ -27,16 +27,16 @@ commits exist.
 
 | Task | Status | Test evidence | Commit ref |
 | --- | --- | --- | --- |
-| C1a | verified | pytest tests/unit/test_models.py -q: 4 passed; editable requirements install succeeded | uncommitted |
-| C1b | verified | pytest encoding/models: 32 passed, no warnings | uncommitted |
-| C1c | verified | pytest tests/unit -q: 42 passed; invalid-fixture serialization corrected without weakening checks | uncommitted |
-| C1d | verified | unit/integration suite: 67 passed; review regressions fixed; --check and pip check successful | uncommitted |
-| C2a | pending | Pending | pending |
-| C2b | pending | Pending | pending |
-| C2c | pending | Pending | pending |
-| C2d | pending | Pending | pending |
-| C2e | pending | Pending | pending |
-| C2f | pending | Pending | pending |
+| C1a | verified | pytest tests/unit/test_models.py -q: 4 passed; editable requirements install succeeded | 38d4d58 |
+| C1b | verified | pytest encoding/models: 32 passed, no warnings | 38d4d58 |
+| C1c | verified | pytest tests/unit -q: 42 passed; invalid-fixture serialization corrected without weakening checks | 38d4d58 |
+| C1d | verified | unit/integration suite: 67 passed; review regressions fixed; --check and pip check successful | 38d4d58 |
+| C2a | verified | framing/models/encoding: 42 passed; invalid fixture corrected, bounds retained | uncommitted |
+| C2b | verified | messages/framing/encoding: 66 passed; signed fixture corrected | uncommitted |
+| C2c | verified | crypto/messages/encoding: 84 passed | uncommitted |
+| C2d | verified | finished/crypto/messages/framing: 77 passed | uncommitted |
+| C2e | verified | outbound/finished/crypto/messages/framing: 81 passed | uncommitted |
+| C2f | verified | full unit/integration suite: 172 passed; Sol review and hash timing regression fix passed | uncommitted |
 | C3a | pending | Pending | pending |
 | C3b | pending | Pending | pending |
 | C3c | pending | Pending | pending |
@@ -90,4 +90,4 @@ commits exist.
 
 ## Unresolved decisions
 
-C1 milestone passed Sol spec/quality review; 67 unit/integration tests passed. No unresolved C1 decisions.
+C1 and C2 Sol spec/quality reviews passed; full unit/integration suite: 172 passed. No unresolved contract decisions.
