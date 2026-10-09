@@ -12,6 +12,7 @@ import psutil
 
 from ..models import Endpoint
 from .jobs import JobController
+from .scrolling import CanvasScroller, scrollbar
 
 
 _DEFAULT_PORT = 47655
@@ -72,7 +73,7 @@ class ConnectionTab:
         frame.rowconfigure(0, weight=1)
         self._canvas = tk.Canvas(frame, highlightthickness=0, borderwidth=0)
         self._canvas.grid(row=0, column=0, sticky="nsew")
-        scroll = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self._canvas.yview)
+        scroll = scrollbar(frame, orient=tk.VERTICAL, command=self._canvas.yview)
         scroll.grid(row=0, column=1, sticky="ns")
         self._canvas.configure(yscrollcommand=scroll.set)
         content = ttk.Frame(self._canvas, padding=10)
@@ -81,9 +82,7 @@ class ConnectionTab:
         content.columnconfigure(0, weight=1)
         content.bind("<Configure>", self._content_resized, add="+")
         self._canvas.bind("<Configure>", self._canvas_resized, add="+")
-        self._canvas.bind("<MouseWheel>", self._mousewheel, add="+")
-        self._canvas.bind("<Button-4>", self._mousewheel, add="+")
-        self._canvas.bind("<Button-5>", self._mousewheel, add="+")
+        self._scroller = CanvasScroller(self._canvas)
         local = ttk.LabelFrame(content, text="Your device IP addresses", padding=8)
         local.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         local.columnconfigure(1, weight=1)
@@ -223,20 +222,11 @@ class ConnectionTab:
         self._canvas.itemconfigure(self._canvas_window, width=event.width)
 
     def _mousewheel(self, event):
-        if getattr(event, "num", None) == 4:
-            delta = -1
-        elif getattr(event, "num", None) == 5:
-            delta = 1
-        else:
-            delta = -1 if event.delta > 0 else 1
-        self._canvas.yview_scroll(delta, "units")
-        return "break"
+        return self._scroller.scroll(event)
 
     def _watch_focus(self, widget) -> None:
         widget.bind("<FocusIn>", self._focus_into_view, add="+")
-        widget.bind("<MouseWheel>", self._mousewheel, add="+")
-        widget.bind("<Button-4>", self._mousewheel, add="+")
-        widget.bind("<Button-5>", self._mousewheel, add="+")
+        self._scroller.bind_to(widget)
         for child in widget.winfo_children():
             self._watch_focus(child)
 
@@ -268,10 +258,13 @@ class ConnectionTab:
             return
         y1 = widget.winfo_rooty() - self._canvas.winfo_rooty() + top
         y2 = y1 + widget.winfo_height()
+        # yview_moveto rounds to a scroll increment. Leave a full step around
+        # focused controls so rounding cannot leave the button partly clipped.
+        margin = max(2, int(self._canvas.cget("yscrollincrement")))
         if y1 < top:
-            self._canvas.yview_moveto(max(0, y1 / max(1, item[3])))
+            self._canvas.yview_moveto(max(0, (y1 - margin) / max(1, item[3])))
         elif y2 > top + height:
-            self._canvas.yview_moveto(max(0, (y2 - height) / max(1, item[3])))
+            self._canvas.yview_moveto(max(0, (y2 - height + margin) / max(1, item[3])))
 
     def _copy(self, value: str) -> None:
         self.widget.clipboard_clear()

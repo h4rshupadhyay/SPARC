@@ -121,6 +121,24 @@ def _make_tab(service=None):
     return root, tab
 
 
+@pytest.mark.gui
+def test_scroll_over_analysis_label_moves_the_page():
+    root, tab = _make_tab()
+    try:
+        root.geometry("800x640")
+        root.deiconify()
+        root.update()
+        title = next(child for child in _walk(tab.widget)
+                     if isinstance(child, ttk.Label) and child.cget("text") == "Analysis laboratory")
+        before = tab._canvas.yview()[0]
+        title.event_generate("<Button-5>")
+        root.update()
+        assert tab._canvas.yview()[0] > before
+    finally:
+        tab.close()
+        root.destroy()
+
+
 def _labeled_input(tab, term):
     for widget in _walk(tab.widget):
         if not isinstance(widget, (ttk.Entry, ttk.Spinbox, ttk.Combobox)):

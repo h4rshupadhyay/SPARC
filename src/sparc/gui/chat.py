@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from .jobs import JobController
+from .scrolling import scrollbar
 
 
 _HISTORY_LIMIT = 500
@@ -43,7 +44,7 @@ class ChatTab:
         history_frame.columnconfigure(0, weight=1)
         history_frame.rowconfigure(0, weight=1)
         self._history = tk.Listbox(history_frame, height=12, exportselection=False)
-        scroll = ttk.Scrollbar(history_frame, orient=tk.VERTICAL, command=self._history.yview)
+        scroll = scrollbar(history_frame, orient=tk.VERTICAL, command=self._history.yview)
         self._history.configure(yscrollcommand=scroll.set)
         self._history.grid(row=0, column=0, sticky="nsew")
         scroll.grid(row=0, column=1, sticky="ns")
@@ -54,7 +55,7 @@ class ChatTab:
         inspector_frame.columnconfigure(0, weight=1)
         inspector_frame.rowconfigure(0, weight=1)
         self._inspector = tk.Text(inspector_frame, height=13, wrap=tk.WORD, state=tk.DISABLED)
-        inspector_scroll = ttk.Scrollbar(
+        inspector_scroll = scrollbar(
             inspector_frame, orient=tk.VERTICAL, command=self._inspector.yview
         )
         self._inspector.configure(yscrollcommand=inspector_scroll.set)

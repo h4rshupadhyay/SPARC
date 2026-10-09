@@ -25,6 +25,7 @@ from ..analysis.specimen import make_timed_specimen, verify_specimen
 from ..models import ServiceEvent
 from ..storage import atomic_write
 from .jobs import JobController
+from .scrolling import CanvasScroller, scrollbar
 
 
 _ALLOWED_SIZES = (64, 1024, 16384)
@@ -102,17 +103,15 @@ class AnalysisTab:
         frame.rowconfigure(1, weight=0)
         self._canvas = tk.Canvas(frame, highlightthickness=0, borderwidth=0)
         self._canvas.grid(row=0, column=0, sticky="nsew")
-        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self._canvas.yview)
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        self._canvas.configure(yscrollcommand=scrollbar.set)
+        page_scrollbar = scrollbar(frame, orient=tk.VERTICAL, command=self._canvas.yview)
+        page_scrollbar.grid(row=0, column=1, sticky="ns")
+        self._canvas.configure(yscrollcommand=page_scrollbar.set)
         self._content = ttk.Frame(self._canvas, padding=12)
         self._canvas_window = self._canvas.create_window((0, 0), window=self._content, anchor="nw")
         self._content.columnconfigure(0, weight=1)
         self._content.bind("<Configure>", self._content_resized, add="+")
         self._canvas.bind("<Configure>", self._canvas_resized, add="+")
-        self._canvas.bind("<MouseWheel>", self._mousewheel, add="+")
-        self._canvas.bind("<Button-4>", self._mousewheel, add="+")
-        self._canvas.bind("<Button-5>", self._mousewheel, add="+")
+        self._scroller = CanvasScroller(self._canvas)
 
         ttk.Label(self._content, text="Analysis laboratory", font=("TkDefaultFont", 13, "bold")).grid(
             row=0, column=0, sticky="w", pady=(2, 2)
@@ -298,7 +297,7 @@ class AnalysisTab:
                 anchor="w", stretch=column == "detail",
             )
         self._results.grid(row=1, column=0, sticky="ew", pady=(5, 0))
-        results_xscroll = ttk.Scrollbar(result_area, orient=tk.HORIZONTAL, command=self._results.xview)
+        results_xscroll = scrollbar(result_area, orient=tk.HORIZONTAL, command=self._results.xview)
         results_xscroll.grid(row=2, column=0, sticky="ew")
         self._results.configure(xscrollcommand=results_xscroll.set)
         self._details = tk.Text(result_area, height=11, wrap=tk.WORD, state=tk.DISABLED)
@@ -340,7 +339,7 @@ class AnalysisTab:
                 anchor="w", stretch=column == "context",
             )
         self._metrics.grid(row=0, column=0, sticky="ew")
-        metrics_xscroll = ttk.Scrollbar(metrics, orient=tk.HORIZONTAL, command=self._metrics.xview)
+        metrics_xscroll = scrollbar(metrics, orient=tk.HORIZONTAL, command=self._metrics.xview)
         metrics_xscroll.grid(row=1, column=0, sticky="ew")
         self._metrics.configure(xscrollcommand=metrics_xscroll.set)
         self._content.bind("<Configure>", self._resize_wrapped_text, add="+")
@@ -369,6 +368,7 @@ class AnalysisTab:
             child for child in _walk(self._content)
             if isinstance(child, (ttk.Entry, ttk.Spinbox, ttk.Combobox))
         ]
+        self._scroller.bind_to(self._content)
 
     def _field(
         self, parent, label: str, variable: tk.StringVar, column: int, *,
@@ -401,14 +401,7 @@ class AnalysisTab:
         self._canvas.itemconfigure(self._canvas_window, width=event.width)
 
     def _mousewheel(self, event):
-        if getattr(event, "num", None) == 4:
-            delta = -1
-        elif getattr(event, "num", None) == 5:
-            delta = 1
-        else:
-            delta = -1 if event.delta > 0 else 1
-        self._canvas.yview_scroll(delta, "units")
-        return "break"
+        return self._scroller.scroll(event)
 
     def _resize_wrapped_text(self, event) -> None:
         width = max(240, event.width - 32)

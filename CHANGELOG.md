@@ -41,6 +41,8 @@
 
 ### Fixed
 
+- Preserve macOS wheel/trackpad gesture magnitude in the legacy Connection and Analysis pages, route page scrolling over ordinary controls, widen Linux scrollbar handles, and expose a scrollbar for long Audit reports. Keep focused Connection controls visible and release wheel callbacks when their canvas is destroyed.
+
 - Wait for startup identity dialogs to become visible before taking the modal grab, and handle cancellation if they are destroyed during startup.
 
 - Add the macOS Application Support data directory, private POSIX modes and fail-closed identity directory synchronization, with bundled-Tk setup guidance. Linux regression checks cover the Darwin branches; native Mac demo validation remains pending.

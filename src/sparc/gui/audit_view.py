@@ -8,6 +8,7 @@ from tkinter import filedialog, ttk
 
 from ..audit_format import AuditReport
 from .jobs import JobController
+from .scrolling import scrollbar
 
 
 class AuditTab:
@@ -67,8 +68,15 @@ class AuditTab:
         ttk.Label(frame, textvariable=self._metrics_text).grid(
             row=4, column=0, sticky="w", pady=(4, 0)
         )
-        self._details = tk.Text(frame, height=15, wrap=tk.WORD, state=tk.DISABLED)
-        self._details.grid(row=5, column=0, sticky="nsew", pady=(7, 0))
+        details = ttk.Frame(frame)
+        details.grid(row=5, column=0, sticky="nsew", pady=(7, 0))
+        details.columnconfigure(0, weight=1)
+        details.rowconfigure(0, weight=1)
+        self._details = tk.Text(details, height=15, wrap=tk.WORD, state=tk.DISABLED)
+        self._details.grid(row=0, column=0, sticky="nsew")
+        details_scroll = scrollbar(details, orient=tk.VERTICAL, command=self._details.yview)
+        details_scroll.grid(row=0, column=1, sticky="ns")
+        self._details.configure(yscrollcommand=details_scroll.set)
         self._error_label = ttk.Label(frame, textvariable=self._error, wraplength=850)
         self._error_label.grid(
             row=6, column=0, sticky="w", pady=(5, 0)

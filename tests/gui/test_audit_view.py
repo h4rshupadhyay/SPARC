@@ -79,6 +79,33 @@ def _report(*, valid=True, elapsed_ns=1_000_000_000):
     )
 
 
+@pytest.mark.gui
+def test_long_audit_report_has_a_visible_working_scrollbar():
+    root, notebook = _root_or_skip()
+    tab = AuditTab(notebook, FakeService())
+    notebook.add(tab.widget, text="Audit")
+    notebook.pack_configure(fill="both", expand=True)
+    try:
+        root.geometry("800x640")
+        root.deiconify()
+        root.update()
+        bars = [child for child in _walk(tab.widget) if isinstance(child, ttk.Scrollbar)]
+        assert bars and bars[0].winfo_ismapped()
+        tab._details.configure(state="normal")
+        tab._details.insert("end", "\n".join(f"Report line {i}" for i in range(200)))
+        tab._details.configure(state="disabled")
+        root.update()
+        before = tab._details.yview()[0]
+        bar = bars[0]
+        bar.event_generate("<ButtonPress-1>", x=bar.winfo_width() // 2, y=bar.winfo_height() - 30)
+        bar.event_generate("<ButtonRelease-1>", x=bar.winfo_width() // 2, y=bar.winfo_height() - 30)
+        root.update()
+        assert tab._details.yview()[0] > before
+    finally:
+        tab.close()
+        root.destroy()
+
+
 class FakeService:
     def __init__(self, report=None):
         self.events = queue.Queue()

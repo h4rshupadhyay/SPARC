@@ -220,3 +220,24 @@ Completed: manual Connection IP refresh, local signature generation on outgoing 
 Controller integration gate on the exact completed-feature snapshot: `PYTHONPATH=/tmp/sparc-feature-verification-n6l3m5zu/src /home/harsh/SPARC/.worktrees/sparc-progress-check/.venv/bin/python -m pytest -q --tb=short` — exit 0, **883 passed / 9 platform-specific skips in 164.52 s**. The snapshot contains the tracked baseline plus these completed feature files; unfinished T1 capture files and local lab/checkpoint artifacts are excluded. Two new native Tk regressions failed before the startup correction and pass afterward. Native 800-pixel Analysis layout and a real 100,000-attempt full-digest collision search were checked with synthetic inputs. No-match results are bounded observations, not proofs of hash resistance.
 
 Independent scoped feature review found no actionable issues. Sol prescribed the identity mapping correction, including avoiding transient dialogs for hidden parents. Superpowers TDD, verification, review and branch-finishing checks were used; the Sol reasoning/Luna edits/controller command workflow was retained for the startup correction. Commit reference: this milestone commit; actual main push is recorded in the following controller exchange.
+
+
+## Legacy Tkinter usability follow-up (2026-10-10)
+
+The user chose the original Tkinter UI and superseded the CustomTkinter redesign
+with a bounded functionality/visibility pass. On `feat/legacy-tkinter-usability`,
+Connection and Analysis preserve macOS gesture magnitude and scroll over ordinary
+controls while native embedded widgets retain their own behavior. Linux handles
+are wider and DPI-aware; Audit has a report scrollbar; keyboard-focused Connection
+controls remain fully visible. The original notebook layout, fonts, theme and
+backend behavior are preserved.
+
+Four symptom regressions failed before their fixes. Independent review found a
+Tcl wheel-callback retention issue; a failing collection test reproduced it, the
+cleanup correction passed, and scoped re-review found no new material regression.
+Final full gate: `env DISPLAY=:2 .venv/bin/python -m pytest -q` — exit 0,
+**902 passed / 9 native Windows skips in 173.31 s**. Eight fictional-data legacy
+Tk screenshots were inspected at 960×760 and 800×640. Native macOS trackpad feel
+remains unverified; Aqua event replay is not a hardware pass.
+[Usability evidence](legacy-tkinter-usability-evidence.md) records commands,
+review findings, screenshots and limits. This follow-up does not change T1 status.

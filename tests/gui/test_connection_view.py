@@ -99,6 +99,46 @@ def _make_tab(service=None):
     return root, tab
 
 
+@pytest.mark.gui
+def test_wheel_preserves_gesture_magnitude_and_zero_does_not_scroll():
+    root, tab = _make_tab()
+    try:
+        root.geometry("800x640")
+        root.deiconify()
+        root.update()
+        tab._canvas.configure(scrollregion=(0, 0, 800, 20000))
+        tab._canvas.yview_moveto(0.4)
+        start = tab._canvas.yview()[0]
+        tab._mousewheel(SimpleNamespace(num=None, delta=-120))
+        small = tab._canvas.yview()[0] - start
+        tab._canvas.yview_moveto(0.4)
+        tab._mousewheel(SimpleNamespace(num=None, delta=-360))
+        large = tab._canvas.yview()[0] - start
+        assert small > 0 and large >= 2.5 * small
+        before = tab._canvas.yview()
+        tab._mousewheel(SimpleNamespace(num=None, delta=0))
+        assert tab._canvas.yview() == before
+    finally:
+        tab.close()
+        root.destroy()
+
+
+@pytest.mark.gui
+def test_linux_scrollbar_has_a_grabbable_width():
+    root, tab = _make_tab()
+    try:
+        if root.tk.call("tk", "windowingsystem") != "x11":
+            pytest.skip("Linux/X11 scrollbar geometry")
+        root.geometry("800x640")
+        root.deiconify()
+        root.update()
+        scroll = next(child for child in _walk(tab.widget) if isinstance(child, ttk.Scrollbar))
+        assert scroll.winfo_width() >= 20
+    finally:
+        tab.close()
+        root.destroy()
+
+
 def test_listening_port_is_not_configured_port_until_started():
     service = FakeService()
     root, tab = _make_tab(service)
