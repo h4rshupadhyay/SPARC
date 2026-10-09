@@ -1,7 +1,7 @@
 # SPARC desktop visual prototype
 
 Date: 2026-10-09
-Status: Written design awaiting review before implementation planning.
+Status: Approved by the user; implementation plan awaiting review.
 
 ## Purpose and agreed scope
 
