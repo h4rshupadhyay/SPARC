@@ -26,3 +26,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "gui: requires a working Tk display",
+    "tshark: requires the optional tshark packet analysis tool",
+]

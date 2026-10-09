@@ -20,7 +20,7 @@ _BATCH_SIZE = 64
 
 
 def launch(data_dir: Path) -> None:
-    """Create and run the three core GUI tabs for one SPARC data directory."""
+    """Create and run the SPARC GUI tabs for one data directory."""
     root = None
     service = None
     app = None
@@ -42,6 +42,10 @@ def launch(data_dir: Path) -> None:
         app.add_tab("Connection", ConnectionTab(app.notebook, service))
         app.add_tab("Chat", ChatTab(app.notebook, service))
         app.add_tab("Audit", AuditTab(app.notebook, service))
+        if isinstance(app.notebook, ttk.Notebook):
+            from .analysis_view import register_analysis
+
+            register_analysis(app, service)
         root.mainloop()
     except BaseException:
         if app is not None:

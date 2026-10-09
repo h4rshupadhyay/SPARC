@@ -201,3 +201,46 @@ and whether pairing was new or remembered. Keep physical-device evidence
 separate from simulation results. The Wireshark capture and packet-conversion
 deliverables remain future work; no PCAP, PDML, SQLite, or PyShark result is
 claimed here.
+
+## Standalone synthetic analysis
+
+Run the laboratory and local benchmark without a connected peer:
+
+```bash
+python -m sparc.analysis sensitivity --seed 42 --output .demo/lab
+python -m sparc.analysis benchmark --output .demo/local-benchmark.csv
+```
+
+The default laboratory exports 19,200 trials: 6,400 plaintext flips and 12,800 key flips across 50 synthetic cases. The benchmark exports 18,000 measured primitive calls after 10 warmups per operation/workload. Each CSV includes completion state, run metadata and definitions. Retain raw rows with summaries; recompute means, medians, nearest-rank p95 and population standard deviation before incorporating results into a report. Synthetic laboratory keys are public operands; benchmark CSVs contain no keys. Canceled or failed runs must remain labeled incomplete. These measurements are local primitive timings and do not establish network goodput or physical cross-platform performance.
+
+## Analysis tab operation metrics
+
+The fourth GUI tab keeps the latest 1,000 public operation events in a bounded
+window. Select **Export metrics CSV…** to save the raw retained rows and
+reconstructable duration summaries. The CSV metadata names the retained-window
+policy, truncation state, units, and measurement definitions. Failures remain
+raw rows and are excluded from successful duration summaries. Encoded audit
+bytes and protected-frame bytes are separate when the service supplies both.
+This queue is best-effort: dropped service events cannot be recovered later.
+
+**Verify audit metric** runs the existing committed-prefix verifier through the
+tab's one cancellable job. Its row uses the verifier's reported duration and
+verified-record count; it adds no timer and does not choose a checkpoint or
+claim to verify later appends. An invalid report remains a failed measurement.
+Canceled or errored verification produces no timing row. Reconnect recovery
+uses the service's retry-chain duration in its public context and retains the
+wrapper duration as provenance; the reconnect-attempt event is an outcome
+diagnostic, not a measured attempt duration.
+
+The retained loopback capture at
+`.demo/a3-evidence/b43fafc2b06c45cc900a5207780c80ee/` contains 300 completed
+receipts across the default three sizes, with 10 warmups per size (30 total),
+from two peer services running in one process, and four resource samples. The
+raw verified receipt rows are in `network.csv`; the controller independently
+checked reconstruction of the summaries, with the reconstruction record at
+`reconstruction.json`. `operations.json` contains collected service operation
+events. The separate finite resource exercise at
+`.demo/a3-evidence/resources-1bf14715c72f41f2b11a2deacae219cd/` records an idle
+listener and a bounded 50-connection invalid-handshake workload. Neither
+artifact supplies physical-device results, attack-workload goodput, measured
+detection/recovery timing, or an arbitrary-denial-of-service claim.

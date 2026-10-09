@@ -4,6 +4,8 @@
 
 ### Added
 
+- Verified-receipt network benchmarks, bounded process resource sampling, and an Analysis tab with cancellable jobs, signature specimens, audit-verification measurements, and policy-labeled CSV exports.
+
 - Local six-operation cryptographic benchmarks, isolated signature specimens, and standalone analysis commands with reproducible raw/summary CSV exports.
 
 - Reproducible synthetic AES-256 sensitivity trials and bounded 50-case batches with separate bit, byte and hexadecimal metrics and cancellable partial results.
@@ -34,6 +36,8 @@
 - Durably audit retry outcomes and stop networking after availability-audit failure.
 
 ### Fixed
+
+- Clear network rates for canceled summary aggregation and coalesce GUI operation-metric bursts while preserving raw observations.
 
 - Preserve verified-prefix counts when checkpoint verification fails after scanning.
 - Preserve existing export-directory permissions while keeping private application stores restricted.

@@ -88,7 +88,7 @@ def _metadata(run_id: str, sizes: tuple[int, ...], warmups: int, repetitions: in
         },
         "definitions": {
             "hash": "SHA-256 digest of the ASCII plaintext; digest finalization is timed",
-            "sign_verify": "Ed25519 over a fixed-length C2 message context and signing projection",
+            "sign_verify": "Ed25519 over an approximately constant-length C2 message context and signing projection",
             "encrypt_decrypt": "AES-256-GCM over the serialized signed envelope, which grows with plaintext size",
             "throughput": "plaintext bytes multiplied by successful call count divided by summed primitive durations",
             "timing_scope": "Includes perf_counter_ns timer overhead; excludes key generation, encoding, nonce/AAD construction, and I/O",
