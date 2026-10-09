@@ -9,6 +9,9 @@ import theme as t
 from state import DemoState
 from ui import button, label
 from views.chat import ChatView
+from views.connection import ConnectionView
+from views.audit import AuditView
+from views.analysis import AnalysisView
 
 
 class PrototypeApp(ctk.CTk):
@@ -48,7 +51,8 @@ class PrototypeApp(ctk.CTk):
         self.main.columnconfigure(0, weight=1)
         self.main.rowconfigure(0, weight=1)
         self.main.grid(row=0, column=1, **t.MAIN)
-        self.views = {"Chat": ChatView(self.main, self.demo, self.refresh_views)}
+        self.views = {name: view(self.main, self.demo, self.refresh_views) for name, view in (
+            ("Connection", ConnectionView), ("Chat", ChatView), ("Audit", AuditView), ("Analysis", AnalysisView))}
         self.current_view = "Chat"
         self.show_view("Chat")
         self.bind("<Configure>", self._resize)

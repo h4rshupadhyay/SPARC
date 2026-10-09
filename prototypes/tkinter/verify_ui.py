@@ -60,6 +60,42 @@ def check_chat(app):
     assert chat.history._parent_canvas.yview()[1] >= 0.99, "Newly sent message must be visible"
 
 
+def check_views(app):
+    assert set(app.views) == {"Connection", "Chat", "Audit", "Analysis"}
+    for name in app.views:
+        app.nav[name].invoke()
+        app.update()
+        assert app.current_view == name and app.views[name].winfo_ismapped()
+    connection = app.views["Connection"]
+    connection.disconnect_button.invoke()
+    assert not app.demo.connected
+    assert app.views["Chat"].send_button.cget("state") == "disabled"
+    connection.peer_ip.delete(0, "end")
+    connection.peer_ip.insert(0, "invalid")
+    connection.connect_button.invoke()
+    assert not app.demo.connected and connection.error.cget("text")
+    connection.peer_ip.delete(0, "end")
+    connection.peer_ip.insert(0, "192.0.2.24")
+    connection.connect_button.invoke()
+    assert app.demo.connected and not connection.error.cget("text")
+    assert app.views["Chat"].send_button.cget("state") == "normal"
+    connection.listener_button.invoke()
+    assert app.demo.listening and "Listening" in connection.listener_status.cget("text")
+    connection.listener_button.invoke()
+    assert not app.demo.listening
+    connection.approve_button.invoke()
+    assert app.demo.pairing == "approved"
+    app.demo.pairing = "pending"
+    app.refresh_views()
+    connection.reject_button.invoke()
+    assert app.demo.pairing == "rejected"
+    app.views["Audit"].verify_button.invoke()
+    assert app.demo.audit_verified and "24" in app.views["Audit"].result.cget("text")
+    app.views["Analysis"].run_button.invoke()
+    assert app.demo.analysis_run == 1
+    assert "0.18" in app.views["Analysis"].values["encrypt_ms"].cget("text")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path)
@@ -70,6 +106,7 @@ def main():
     app.report_callback_exception = lambda _kind, error, _trace: callback_errors.append(error)
     try:
         check_chat(app)
+        check_views(app)
         assert not callback_errors, callback_errors
         if args.output:
             app.demo.messages[:] = initial_messages
