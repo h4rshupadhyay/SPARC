@@ -86,3 +86,30 @@ unverified. Native Windows hardware was not exercised. There is no new theme or
 DPI switching UI; handles are sized against the active settings at construction.
 Backend changes and a new security audit are outside this UI-only follow-up;
 existing backend behavior is covered by the full regression suite.
+
+
+## Main integration
+
+The user approved applying these changes on 2026-10-10. `main` was clean at
+`8e5378e` and fast-forwarded to `c8393e7`; no production source differs from the
+reviewed usability branch.
+
+Merged-source verification from `/home/harsh/SPARC`:
+
+```sh
+env DISPLAY=:2 PYTHONPATH=/home/harsh/SPARC/src /home/harsh/SPARC/.worktrees/sparc-tkinter-usability/.venv/bin/python -m pytest -q
+```
+
+Result: exit 0, **902 passed / 9 native Windows skips in 174.17 seconds**, no
+warning summary. The existing worktree environment was retained for verification
+and its local review artifacts; source and tests were loaded from `main`.
+
+The main `.venv` initially had no installed SPARC package. Installed the existing
+runtime requirements and declared Analysis extra with
+`.venv/bin/python -m pip install -r requirements.txt` and
+`.venv/bin/python -m pip install -e '.[analysis]'`. Dependency declarations were
+unchanged. All four legacy GUI modules then imported from `/home/harsh/SPARC/src`;
+CLI help passed, and a synthetic real-widget smoke in that environment confirmed
+child-label wheel routing and a 23-pixel Linux scrollbar. No real identity or
+network service was opened for these checks. Native macOS trackpad feel remains
+unverified. Launch from the main checkout with `.venv/bin/python -m sparc`.

@@ -241,3 +241,10 @@ Tk screenshots were inspected at 960×760 and 800×640. Native macOS trackpad fe
 remains unverified; Aqua event replay is not a hardware pass.
 [Usability evidence](legacy-tkinter-usability-evidence.md) records commands,
 review findings, screenshots and limits. This follow-up does not change T1 status.
+
+Legacy Tkinter usability integrated into local `main` on user approval,
+2026-10-10: fast-forward `8e5378e` → `c8393e7`. Merged-source full suite exited 0,
+**902 passed / 9 native Windows skips in 174.17 s**. Main runtime requirements and
+the existing Analysis extra installed; four-tab imports, CLI help and synthetic
+Tk scrolling/23-pixel scrollbar checks passed. The usability worktree is retained
+for its test environment and review artifacts. Native Mac feel remains pending.
