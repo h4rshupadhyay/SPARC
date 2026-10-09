@@ -877,12 +877,18 @@ class AnalysisTab:
             unit = "µs" if label else "ns"
             mean = summary.get("mean_ns")
             p95 = summary.get("p95_ns")
+            if operation == "network_round_trip":
+                rate_detail = (
+                    f"goodput {self._display(summary.get('goodput_bytes_s'))} B/s · "
+                    f"characters {self._display(summary.get('characters_s'))}/s"
+                )
+            else:
+                rate_detail = f"throughput {self._display(summary.get('throughput_bytes_s'))} B/s"
             self._add_row(
                 summary.get("payload_bytes"), f"{label} ({unit})" if label else operation,
                 mean / divisor if mean is not None else None,
                 f"n={summary.get('count')} · p95 {self._display(p95 / divisor if p95 is not None else None)} {unit} · "
-                f"goodput {self._display(summary.get('goodput_bytes_s'))} B/s · "
-                f"characters {self._display(summary.get('characters_s'))}/s",
+                f"{rate_detail}",
             )
         for sample in result.samples[:_RESULT_ROWS]:
             operation = sample.get("operation")

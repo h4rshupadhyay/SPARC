@@ -372,6 +372,62 @@ def test_local_benchmark_labels_signature_generation_in_microseconds():
 
 
 @pytest.mark.gui
+@pytest.mark.parametrize("throughput, displayed", [
+    (32000000.0, "3.2e+07"), (0.0, "0"), (None, "unavailable"),
+])
+def test_local_benchmark_displays_primitive_throughput(throughput, displayed):
+    from sparc.analysis.models import BenchmarkResult
+
+    root, tab = _make_tab()
+    try:
+        tab._job_kind = "local"
+        tab._job_result("result", BenchmarkResult(
+            metadata={"test_type": "local_cryptographic"}, samples=[], summary=[{
+                "operation": "hash", "payload_bytes": 64, "count": 2,
+                "mean_ns": 2000, "median_ns": 2000, "p95_ns": 2000,
+                "throughput_bytes_s": throughput,
+            }], complete=True,
+        ))
+        row = tab._results.item(tab._results.get_children()[0], "values")
+        assert f"throughput {displayed} B/s" in row[3]
+        assert "goodput" not in row[3]
+        assert "characters" not in row[3]
+    finally:
+        tab.close()
+        root.destroy()
+
+
+@pytest.mark.gui
+@pytest.mark.parametrize("complete, goodput, characters, displayed", [
+    (True, 1024, 512, "goodput 1024 B/s · characters 512/s"),
+    (False, None, None, "goodput unavailable B/s · characters unavailable/s"),
+])
+def test_network_benchmark_displays_confirmed_delivery_rates(
+    complete, goodput, characters, displayed,
+):
+    from sparc.analysis.models import BenchmarkResult
+
+    root, tab = _make_tab()
+    try:
+        tab._job_kind = "network"
+        tab._job_result("result", BenchmarkResult(
+            metadata={"test_type": "network"}, samples=[], summary=[{
+                "operation": "network_round_trip", "payload_bytes": 64,
+                "count": 2, "mean_ns": 2500, "median_ns": 2500, "p95_ns": 4000,
+                "throughput_bytes_s": None, "goodput_bytes_s": goodput,
+                "characters_s": characters, "confirmed_count": 2,
+                "elapsed_interval_ns": 125000000,
+            }], complete=complete,
+        ))
+        row = tab._results.item(tab._results.get_children()[0], "values")
+        assert displayed in row[3]
+        assert "throughput" not in row[3]
+    finally:
+        tab.close()
+        root.destroy()
+
+
+@pytest.mark.gui
 @pytest.mark.parametrize("mode", ["collision", "preimage", "second_preimage"])
 def test_hash_search_gui_runs_and_exports_full_digest_searches(monkeypatch, tmp_path, mode):
     import hashlib
