@@ -7,7 +7,8 @@ local identities, signed audit records, and reproducible analysis tools.
 ## Current features
 
 - **Connection:** manual listener and peer configuration, first-contact
-  fingerprint approval, remembered-peer trust, and bounded reconnection.
+  fingerprint approval, remembered-peer trust, refreshable local IP addresses,
+  and bounded reconnection.
 - **Chat:** Unicode and multiline text protected with AES-256-GCM and Ed25519
   signatures, authenticated X25519 session establishment, verified delivery
   receipts, replay checks, and public record inspection.
@@ -16,7 +17,8 @@ local identities, signed audit records, and reproducible analysis tools.
   checkpoint.
 - **Analysis:** synthetic AES sensitivity trials, local cryptographic
   benchmarks, verified-receipt network measurements, CPU/RSS sampling,
-  signature specimens, operation metrics, and CSV exports.
+  timed signature specimens, collision/preimage/second-preimage hashing
+  experiments, operation metrics, and CSV exports.
 
 Traffic Analysis is in progress. Capture normalization, traffic indexing, and
 the traffic CLI/GUI are not yet completed features. See the
@@ -98,9 +100,19 @@ macOS.
 4. Send text in **Chat**, inspect the verified delivery result, and use **Audit**
    to verify the local log against a retained checkpoint.
 
+After switching networks, use **Refresh IPs** in **Connection** to update the
+device address list and **Copy endpoint** actions. Refreshing preserves your
+listener and peer settings; restart a listener bound to a specific old IP if
+that address is no longer available.
+
 An unconfirmed message is not automatically resent after reconnection. See the
 [demo guide](docs/progress-check-demo.md) for the full procedure and availability
 exercises.
+
+The **Chat** message inspector shows local signature timings near the top:
+generation on outgoing messages and verification on incoming messages, in
+microseconds. Missing timings are labeled unavailable. These are local
+operation durations; sender timings are not transmitted to the receiver.
 
 ## Standalone analysis
 
@@ -116,6 +128,19 @@ Retain raw CSV rows with their summaries and completion labels. Synthetic
 operands and local primitive timings do not establish physical-device network
 performance. Network benchmarks and resource sampling are available in the
 **Analysis** tab; network runs require a connected, authenticated peer.
+
+In **Analysis → Hashing security analysis**, choose collision, preimage, or
+second-preimage resistance, a seed, and an attempt limit.
+All searches compare complete 256-bit SHA-256 digests. Results show attempts,
+elapsed time, and any matching synthetic inputs
+with their full digests. **Cancel** retains incomplete hashing results;
+**Save CSV…** exports the result and its scope. No match is expected in these
+finite searches; it does not establish SHA-256 security. Definitions
+follow [NIST's hash-function guidance](https://csrc.nist.gov/Projects/hash-functions).
+
+**Generate specimen** also displays Ed25519 signature generation time, excluding
+key generation and encoding. Local benchmark signature rows display
+microseconds; CSV timing fields retain nanoseconds.
 
 ## Demonstrations and evidence
 

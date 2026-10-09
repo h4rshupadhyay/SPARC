@@ -15,12 +15,13 @@ from threading import Event
 
 from ..analysis.benchmark import run_local_benchmarks
 from ..analysis.export import export_benchmark, export_lab
+from ..analysis.hashing import HASH_PROPERTIES, HASH_SOURCE, HashSearchResult, export_hash_search, run_hash_search
 from ..analysis.models import BenchmarkResult, LabResult, ResourceResult, Trial
 from ..analysis.operation_metrics import OperationMetrics
 from ..analysis.network import run_network_benchmark
 from ..analysis.resources import sample_resources
 from ..analysis.sensitivity import run_sensitivity, sensitivity_trial
-from ..analysis.specimen import make_specimen, verify_specimen
+from ..analysis.specimen import make_timed_specimen, verify_specimen
 from ..models import ServiceEvent
 from ..storage import atomic_write
 from .jobs import JobController
@@ -29,6 +30,11 @@ from .jobs import JobController
 _ALLOWED_SIZES = (64, 1024, 16384)
 _RESULT_ROWS = 500
 _RESOURCE_ROWS = 100
+_HASH_MODES = {
+    "Collision resistance": "collision",
+    "Preimage resistance": "preimage",
+    "Second-preimage resistance": "second_preimage",
+}
 
 
 def _parse_seed(value: str) -> int:
@@ -61,6 +67,7 @@ class AnalysisTab:
         self._last_result: object | None = None
         self._last_result_kind: str | None = None
         self._resource_stop: Event | None = None
+        self._hash_cancel: Event | None = None
         self._operation_metrics = OperationMetrics()
         self._has_operation_metrics = False
         self._metrics_redraw_id = None
@@ -80,6 +87,10 @@ class AnalysisTab:
         self._specimen_public = tk.StringVar(master=self.widget, value="")
         self._specimen_signed = tk.StringVar(master=self.widget, value="")
         self._specimen_signature = tk.StringVar(master=self.widget, value="")
+        self._specimen_timing = tk.StringVar(master=self.widget, value="Signature generation: unavailable")
+        self._hash_mode = tk.StringVar(master=self.widget, value="Collision resistance")
+        self._hash_attempts = tk.StringVar(master=self.widget, value="100000")
+        self._hash_seed = tk.StringVar(master=self.widget, value="42")
         self._job = JobController(parent.winfo_toplevel(), self._job_result)
         self._build()
         self._refresh_controls()
@@ -207,9 +218,38 @@ class AnalysisTab:
             specimen_actions, text="Verify specimen", command=self._verify_specimen
         )
         self._verify_specimen_button.grid(row=0, column=1, sticky="w")
+        ttk.Label(specimen, textvariable=self._specimen_timing, wraplength=650).grid(
+            row=4, column=0, columnspan=2, sticky="w", pady=(6, 0)
+        )
+
+        hashing = ttk.LabelFrame(self._content, text="Hashing security analysis", padding=8)
+        hashing.grid(row=5, column=0, sticky="ew", pady=(0, 8))
+        hashing.columnconfigure(0, weight=1)
+        ttk.Label(
+            hashing,
+            text=("Synthetic searches compare full 256-bit SHA-256 digests. "
+                  "No match within the attempt limit is a bounded observation, not proof of security."),
+            wraplength=650,
+        ).grid(row=0, column=0, sticky="ew")
+        hash_fields = ttk.Frame(hashing)
+        hash_fields.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        hash_fields.columnconfigure((0, 1), weight=1)
+        self._field(hash_fields, "Hash property", self._hash_mode, 0, kind="combo",
+                    values=tuple(_HASH_MODES), width=28)
+        digest_field = ttk.Frame(hash_fields, padding=(0, 0, 7, 0))
+        digest_field.grid(row=0, column=1, sticky="ew")
+        ttk.Label(digest_field, text="Digest bits").grid(row=0, column=0, sticky="w")
+        ttk.Label(digest_field, text="256").grid(row=1, column=0, sticky="w")
+        attempts_field = self._field(hash_fields, "Attempt limit", self._hash_attempts, 0,
+                                     kind="spin", low=1, high=100000, width=12)
+        attempts_field.master.grid_configure(row=1)
+        seed_field = self._field(hash_fields, "Hash seed", self._hash_seed, 1, width=18)
+        seed_field.master.grid_configure(row=1)
+        self._hash_button = ttk.Button(hashing, text="Run hash search", command=self._run_hash)
+        self._hash_button.grid(row=2, column=0, sticky="w", pady=(6, 0))
 
         result_area = ttk.LabelFrame(self._content, text="Run status and results", padding=8)
-        result_area.grid(row=5, column=0, sticky="ew")
+        result_area.grid(row=6, column=0, sticky="ew")
         result_area.columnconfigure(0, weight=1)
         result_area.rowconfigure(3, weight=1)
         result_actions = ttk.Frame(result_area)
@@ -236,8 +276,8 @@ class AnalysisTab:
             style="Analysis.Treeview",
         )
         result_examples = {
-            "workload": "Ciphertext",
-            "measurement": "Hex positions changed",
+            "workload": "Synthetic specimen",
+            "measurement": "Signature verification (µs)",
             "value": "61 / 128",
             "detail": "Observed 47.65625%",
         }
@@ -264,7 +304,7 @@ class AnalysisTab:
         self._details = tk.Text(result_area, height=11, wrap=tk.WORD, state=tk.DISABLED)
         self._details.grid(row=3, column=0, sticky="ew", pady=(6, 0))
         metrics = ttk.LabelFrame(self._content, text="Core operation metrics", padding=8)
-        metrics.grid(row=6, column=0, sticky="ew", pady=(8, 0))
+        metrics.grid(row=7, column=0, sticky="ew", pady=(8, 0))
         metrics.columnconfigure(0, weight=1)
         self._metrics = ttk.Treeview(
             metrics,
@@ -396,6 +436,7 @@ class AnalysisTab:
             self._audit_metric_button,
             self._make_specimen_button,
             self._verify_specimen_button,
+            self._hash_button,
         ):
             button.state(state)
         for input_widget in self._input_widgets:
@@ -407,7 +448,7 @@ class AnalysisTab:
         self._finish_button.state(["!disabled"] if finish_enabled else ["disabled"])
         self._save_button.state(
             ["!disabled"]
-            if enabled and isinstance(self._last_result, (LabResult, BenchmarkResult, ResourceResult))
+            if enabled and isinstance(self._last_result, (LabResult, BenchmarkResult, ResourceResult, HashSearchResult))
             else ["disabled"]
         )
         self._save_metrics_button.state(
@@ -464,6 +505,7 @@ class AnalysisTab:
             "audit_verify": "Verifying the captured committed audit prefix…",
             "specimen_make": "Generating a synthetic signature specimen…",
             "specimen_verify": "Verifying the editable signature specimen…",
+            "hash": "Searching synthetic hashes within the chosen attempt limit…",
             "export": "Saving the selected CSV result…",
             "metrics_export": "Saving retained operation metrics…",
         }.get(kind, "Running analysis…")
@@ -576,7 +618,7 @@ class AnalysisTab:
 
     def _generate_specimen(self) -> None:
         def work(_cancel, _emit):
-            public_key, signed_bytes, signature = make_specimen()
+            public_key, signed_bytes, signature, sign_ns = make_timed_specimen()
             edited_bytes = bytes((signed_bytes[0] ^ 1,)) + signed_bytes[1:]
             edited_signature = bytes((signature[0] ^ 1,)) + signature[1:]
             return (
@@ -586,9 +628,37 @@ class AnalysisTab:
                 verify_specimen(public_key, signed_bytes, signature),
                 verify_specimen(public_key, edited_bytes, signature),
                 verify_specimen(public_key, signed_bytes, edited_signature),
+                sign_ns,
             )
 
         self._begin_job("specimen_make", work)
+
+    def _run_hash(self) -> None:
+        if self._closed or self._busy:
+            return
+        try:
+            mode = _HASH_MODES.get(self._hash_mode.get())
+            attempts = int(self._hash_attempts.get())
+            seed = int(self._hash_seed.get())
+            if mode not in HASH_PROPERTIES:
+                raise ValueError("Choose a hash property")
+            if not 1 <= attempts <= 100000:
+                raise ValueError("Attempt limit must be between 1 and 100000")
+            if not 0 <= seed < 2**64:
+                raise ValueError("Hash seed must be from 0 to 2^64 - 1")
+        except ValueError as error:
+            self._status.set(f"Check the hashing inputs: {error}")
+            return
+        cancel = Event()
+        self._hash_cancel = cancel
+
+        def work(_cancel, emit):
+            return run_hash_search(
+                mode, max_attempts=attempts, seed=seed, cancel=cancel,
+                on_progress=lambda completed, total: emit("progress", (completed, total)),
+            )
+
+        self._begin_job("hash", work)
 
     def _verify_specimen(self) -> None:
         try:
@@ -605,6 +675,10 @@ class AnalysisTab:
 
     def _cancel_job(self) -> None:
         if self._closed or not self._busy:
+            return
+        if self._job_kind == "hash" and self._hash_cancel is not None:
+            self._hash_cancel.set()
+            self._status.set("Cancel requested; retaining partial hashing results…")
             return
         if self._job_kind == "resources" and self._resource_stop is not None:
             self._resource_stop.set()
@@ -637,22 +711,27 @@ class AnalysisTab:
         self._busy = False
         self._job_kind = None
         self._resource_stop = None
+        self._hash_cancel = None
         self._refresh_controls()
         if kind == "error":
             self._status.set(f"Analysis failed: {value}")
             return
         if kind != "result":
             return
-        if operation == "specimen_make" and isinstance(value, tuple) and len(value) == 6:
+        if operation == "specimen_make" and isinstance(value, tuple) and len(value) == 7:
             (
                 public_key, signed_bytes, signature,
                 valid, edited_bytes_valid, edited_signature_valid,
+                sign_ns,
             ) = value
             self._specimen_public.set(public_key.hex())
             self._specimen_signed.set(signed_bytes.hex())
             self._specimen_signature.set(signature.hex())
+            self._specimen_timing.set(f"Signature generation: {sign_ns / 1000:g} µs (excludes key generation)")
             self._status.set("Synthetic signature specimen generated")
             self._clear_results()
+            self._add_row("Synthetic specimen", "Signature generation (µs)", sign_ns / 1000,
+                          "Ed25519 signing only; key generation and encoding excluded")
             self._details_text(
                 "Synthetic public data, separate from live records.\n"
                 f"Original specimen: {'valid' if valid else 'rejected'}.\n"
@@ -716,6 +795,13 @@ class AnalysisTab:
             suffix = "; retained window was truncated" if value.window_truncated else ""
             self._status.set(f"Sampling stopped; collected {len(value.samples)} samples{suffix}")
             self._render_resources(value)
+        elif isinstance(value, HashSearchResult):
+            self._status.set({
+                "match": "Hash search: match found",
+                "budget_exhausted": "Hash search: no match within the search budget",
+                "canceled": "Hash search canceled; partial results retained",
+            }[value.outcome])
+            self._render_hash(value)
         else:
             self._status.set("Analysis returned an unsupported result")
             self._last_result = None
@@ -785,21 +871,30 @@ class AnalysisTab:
     def _render_benchmark(self, result: BenchmarkResult) -> None:
         self._clear_results()
         for summary in result.summary:
+            operation = summary.get("operation")
+            label = {"sign": "Signature generation", "verify": "Signature verification"}.get(operation)
+            divisor = 1000 if label else 1
+            unit = "µs" if label else "ns"
+            mean = summary.get("mean_ns")
+            p95 = summary.get("p95_ns")
             self._add_row(
-                summary.get("payload_bytes"), summary.get("operation"),
-                summary.get("mean_ns"),
-                f"n={summary.get('count')} · p95 {self._display(summary.get('p95_ns'))} ns · "
+                summary.get("payload_bytes"), f"{label} ({unit})" if label else operation,
+                mean / divisor if mean is not None else None,
+                f"n={summary.get('count')} · p95 {self._display(p95 / divisor if p95 is not None else None)} {unit} · "
                 f"goodput {self._display(summary.get('goodput_bytes_s'))} B/s · "
                 f"characters {self._display(summary.get('characters_s'))}/s",
             )
         for sample in result.samples[:_RESULT_ROWS]:
+            operation = sample.get("operation")
+            label = {"sign": "Signature generation", "verify": "Signature verification"}.get(operation)
+            elapsed = sample.get("elapsed_ns")
             details = []
             for key in ("message_id", "characters", "frame_bytes", "error"):
                 if sample.get(key) is not None:
                     details.append(f"{key}={sample[key]}")
             self._add_row(
-                sample.get("payload_bytes"), sample.get("operation"),
-                sample.get("elapsed_ns"),
+                sample.get("payload_bytes"), f"{label} (µs)" if label else operation,
+                elapsed / 1000 if label and elapsed is not None else elapsed,
                 f"{'success' if sample.get('success') else 'failed'} · " + " · ".join(details),
             )
         omitted = max(0, len(result.samples) - _RESULT_ROWS)
@@ -821,6 +916,28 @@ class AnalysisTab:
             f"Peak RSS is the maximum among {len(result.samples)} retained samples. "
             f"Window truncated: {result.window_truncated}."
         )
+
+    def _render_hash(self, result: HashSearchResult) -> None:
+        self._clear_results()
+        title = result.mode.replace("_", " ").capitalize()
+        self._add_row(title, "Candidate attempts", result.attempts,
+                      f"Limit {result.max_attempts}; seed {result.seed}")
+        self._add_row(title, "Elapsed (µs)", result.elapsed_ns / 1000,
+                      "Search including progress callbacks; target preparation excluded")
+        self._add_row(title, "Digest bits", result.digest_bits,
+                      "Full SHA-256 bounded search")
+        rows = [HASH_PROPERTIES[result.mode], result.interpretation,
+                f"Outcome: {result.outcome}; complete: {result.complete}.",
+                f"Target / matching digest: {result.target_digest or 'unavailable'}"]
+        for label, value, digest in (
+            ("Input A", result.input_a, result.input_a_sha256),
+            ("Input B", result.input_b, result.input_b_sha256),
+        ):
+            if value is not None:
+                rows.extend([f"{label} (synthetic hex): {value.hex()}",
+                             f"{label} full SHA-256: {digest}"])
+        rows.append(f"Definitions: {HASH_SOURCE}")
+        self._details_text("\n".join(rows))
 
     def _save_csv(self) -> None:
         if self._closed or self._busy or self._last_result is None:
@@ -851,6 +968,9 @@ class AnalysisTab:
                 return path
             if isinstance(result, ResourceResult):
                 self._export_resources(result, path)
+                return path
+            if isinstance(result, HashSearchResult):
+                export_hash_search(result, path)
                 return path
             raise ValueError("This result type does not have a CSV export")
 
@@ -966,6 +1086,8 @@ class AnalysisTab:
             self._metrics_redraw_id = None
         if self._resource_stop is not None:
             self._resource_stop.set()
+        if self._hash_cancel is not None:
+            self._hash_cancel.set()
         self._job.close()
 
 

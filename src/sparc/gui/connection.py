@@ -26,7 +26,8 @@ class ConnectionTab:
         self._closed = False
         self._focus_callback = None
         self._pending_pairing: tuple[str, str, str, str, int] | None = None
-        self._interfaces = self._ipv4_interfaces()
+        self._interfaces: list[tuple[str, str]] = []
+        self._ip_status = tk.StringVar(master=self.widget, value="")
         self._bind_ip = tk.StringVar(master=self.widget, value="0.0.0.0")
         self._bind_port = tk.StringVar(master=self.widget, value=str(_DEFAULT_PORT))
         self._configured_port_text = tk.StringVar(master=self.widget, value=str(_DEFAULT_PORT))
@@ -47,15 +48,13 @@ class ConnectionTab:
         self._trusted_records = ()
         self._job = JobController(self.widget, self._job_result)
         self._build()
+        self._refresh_interfaces()
         self._refresh_peers()
 
     @staticmethod
     def _ipv4_interfaces() -> list[tuple[str, str]]:
         rows = []
-        try:
-            interfaces = psutil.net_if_addrs()
-        except Exception:
-            interfaces = {}
+        interfaces = psutil.net_if_addrs()
         for name, addresses in interfaces.items():
             for address in addresses:
                 if address.family == socket.AF_INET:
@@ -89,25 +88,24 @@ class ConnectionTab:
         local.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         local.columnconfigure(1, weight=1)
         ttk.Label(local, text=f"Hostname: {socket.gethostname()}").grid(
-            row=0, column=0, columnspan=3, sticky="w"
+            row=0, column=0, columnspan=2, sticky="w"
         )
-        if not self._interfaces:
-            ttk.Label(local, text="No IPv4 addresses found").grid(row=1, column=0, sticky="w")
-        for index, (name, ip) in enumerate(self._interfaces, start=1):
-            ttk.Label(local, text=name).grid(row=index, column=0, sticky="w", padx=(0, 10))
-            ttk.Label(local, text=ip).grid(row=index, column=1, sticky="w")
-            ttk.Button(
-                local, text="Copy endpoint",
-                command=lambda address=ip: self._copy_endpoint(address),
-            ).grid(row=index, column=2, sticky="e")
-        all_row = len(self._interfaces) + 1
-        ttk.Label(local, text="0.0.0.0").grid(row=all_row, column=0, sticky="w")
-        ttk.Label(local, text="All IPv4 interfaces").grid(row=all_row, column=1, sticky="w")
+        ttk.Button(local, text="Refresh IPs", command=self._refresh_interfaces).grid(
+            row=0, column=2, sticky="e"
+        )
+        self._ip_rows = ttk.Frame(local)
+        self._ip_rows.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(5, 0))
+        self._ip_rows.columnconfigure(1, weight=1)
+        ttk.Label(local, text="0.0.0.0").grid(row=2, column=0, sticky="w")
+        ttk.Label(local, text="All IPv4 interfaces").grid(row=2, column=1, sticky="w")
         ttk.Label(local, text="Your listening TCP port:").grid(
-            row=all_row + 1, column=0, sticky="w", pady=(5, 0)
+            row=3, column=0, sticky="w", pady=(5, 0)
         )
         ttk.Label(local, textvariable=self._configured_port_text).grid(
-            row=all_row + 1, column=1, columnspan=2, sticky="w", pady=(5, 0)
+            row=3, column=1, columnspan=2, sticky="w", pady=(5, 0)
+        )
+        ttk.Label(local, textvariable=self._ip_status).grid(
+            row=4, column=0, columnspan=3, sticky="w", pady=(5, 0)
         )
 
         listener = ttk.LabelFrame(content, text="Listener", padding=8)
@@ -188,6 +186,32 @@ class ConnectionTab:
             row=5, column=0, sticky="w", pady=(6, 0)
         )
         self._watch_focus(content)
+
+    def _refresh_interfaces(self) -> None:
+        if self._closed:
+            return
+        try:
+            self._interfaces = self._ipv4_interfaces()
+        except Exception:
+            self._interfaces = []
+            self._ip_status.set("Could not refresh IPv4 addresses. Try again.")
+        else:
+            self._ip_status.set(
+                "IP addresses refreshed." if self._interfaces else "No IPv4 addresses found."
+            )
+        for child in self._ip_rows.winfo_children():
+            child.destroy()
+        for index, (name, ip) in enumerate(self._interfaces):
+            ttk.Label(self._ip_rows, text=name).grid(
+                row=index, column=0, sticky="w", padx=(0, 10)
+            )
+            ttk.Label(self._ip_rows, text=ip).grid(row=index, column=1, sticky="w")
+            ttk.Button(
+                self._ip_rows, text="Copy endpoint",
+                command=lambda address=ip: self._copy_endpoint(address),
+            ).grid(row=index, column=2, sticky="e")
+        for child in self._ip_rows.winfo_children():
+            self._watch_focus(child)
 
     def _content_resized(self, _event=None) -> None:
         self._canvas.configure(scrollregion=self._canvas.bbox("all"))

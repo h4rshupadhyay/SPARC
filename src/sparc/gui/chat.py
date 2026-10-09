@@ -194,11 +194,26 @@ class ChatTab:
         rows = [
             f"Origin: {entry['origin']}",
             f"Status: {entry['status']}",
+        ]
+        timings = getattr(inspection, "timings", None)
+        if entry["origin"] == "outgoing":
+            fields = (("sign_ns", "Signature generation"), ("hash_ns", "Hashing"),
+                      ("encrypt_ns", "Encryption"))
+            rows.append("Local sender timings:")
+        else:
+            fields = (("verify_ns", "Signature verification"), ("hash_ns", "Hash recomputation"),
+                      ("decrypt_ns", "Decryption"))
+            rows.append("Local receiver timings:")
+        for field, label in fields:
+            value = getattr(timings, field, None)
+            measured = f"{value / 1000:g} µs" if value is not None else "unavailable"
+            rows.append(f"  {label}: {measured}")
+        rows.extend([
             f"Message ID: {entry.get('message_id') or 'pending'}",
             f"Direction: {entry.get('direction')}",
             f"Sequence: {sequence}",
             f"Text: {entry['text']}",
-        ]
+        ])
         if inspection is not None:
             computed = getattr(inspection, "computed_sha256", None)
             digest = getattr(inspection, "sha256", None)
@@ -212,17 +227,13 @@ class ChatTab:
                 f"Tag (base64): {self._b64(getattr(inspection, 'tag', None))}",
                 f"Ciphertext (base64): {self._b64(getattr(inspection, 'ciphertext', None))}",
             ])
-            timings = getattr(inspection, "timings", None)
-            if timings is not None:
-                rows.append("Timings:")
-                for field in ("hash_ns", "sign_ns", "encrypt_ns", "decrypt_ns", "verify_ns"):
-                    value = getattr(timings, field, None)
-                    if value is not None:
-                        rows.append(f"  {field.removesuffix('_ns')}: {value / 1000:g} µs")
         self._inspector.configure(state=tk.NORMAL)
         self._inspector.delete("1.0", tk.END)
         self._inspector.insert("1.0", "\n".join(rows))
         self._inspector.configure(state=tk.DISABLED)
+        # Include the last wrapped ciphertext line in Tk's scroll extent.
+        self._inspector.count("1.0", "end", "update", "ypixels")
+        self._inspector.yview_moveto(0.0)
 
     @staticmethod
     def _b64(value) -> str:

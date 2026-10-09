@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import gc
 import json
 import threading
 import time
@@ -109,6 +110,9 @@ class FakeService:
 
 
 def _make_tab(service=None):
+    # Release prior destroyed Tk views on the main thread before allocating
+    # hash-search containers can trigger cyclic collection in a worker.
+    gc.collect()
     view = _analysis_view()
     root, notebook = _root_or_skip()
     tab = view.AnalysisTab(notebook, service or FakeService())
@@ -282,7 +286,7 @@ def test_specimen_shows_valid_and_edited_rejection(monkeypatch):
 
     view = _analysis_view()
     specimen = make_specimen()
-    monkeypatch.setattr(view, "make_specimen", lambda: specimen)
+    monkeypatch.setattr(view, "make_timed_specimen", lambda: (*specimen, 2500))
     root, tab = _make_tab()
 
     specimen_buttons = [
@@ -328,6 +332,137 @@ def test_specimen_shows_valid_and_edited_rejection(monkeypatch):
     assert "invalid" in visible or "rejected" in visible
     tab.close()
     root.destroy()
+
+
+@pytest.mark.gui
+def test_signature_specimen_displays_signing_only_microseconds():
+    root, tab = _make_tab()
+    try:
+        _button(tab, "generate", "specimen").invoke()
+        _pump(root, lambda: not tab._busy)
+        visible = _visible(tab.widget)
+        assert "Signature generation" in visible
+        assert "µs" in visible
+        assert "excludes key generation" in visible.lower()
+    finally:
+        tab.close()
+        root.destroy()
+
+
+@pytest.mark.gui
+def test_local_benchmark_labels_signature_generation_in_microseconds():
+    from sparc.analysis.models import BenchmarkResult
+
+    root, tab = _make_tab()
+    try:
+        tab._job_kind = "local"
+        tab._job_result("result", BenchmarkResult(
+            metadata={}, samples=[], summary=[{
+                "operation": "sign", "payload_bytes": 64, "count": 2,
+                "mean_ns": 2500, "p95_ns": 4000,
+            }], complete=True,
+        ))
+        values = [tab._results.item(item, "values") for item in tab._results.get_children()]
+        assert values[0][1] == "Signature generation (µs)"
+        assert values[0][2] == "2.5"
+        assert "p95 4 µs" in values[0][3]
+    finally:
+        tab.close()
+        root.destroy()
+
+
+@pytest.mark.gui
+@pytest.mark.parametrize("mode", ["collision", "preimage", "second_preimage"])
+def test_hash_search_gui_runs_and_exports_full_digest_searches(monkeypatch, tmp_path, mode):
+    import hashlib
+
+    root, tab = _make_tab()
+    try:
+        actions = [w for w in _walk(tab.widget)
+                   if isinstance(w, ttk.Button) and w.cget("text") == "Run hash search"]
+        assert actions, "Analysis must expose hashing security experiments"
+        tab._hash_mode.set({
+            "collision": "Collision resistance", "preimage": "Preimage resistance",
+            "second_preimage": "Second-preimage resistance",
+        }[mode])
+        tab._hash_seed.set("7")
+        tab._hash_attempts.set("4096")
+        actions[0].invoke()
+        _pump(root, lambda: not tab._busy)
+        visible = _visible(tab.widget).lower()
+        assert "no match within" in visible
+        assert "full sha-256" in visible
+        assert "shortened" not in visible
+        assert "does not establish" in visible
+        assert "attempts" in visible and "elapsed" in visible
+        result = tab._last_result
+        assert result.mode == mode
+        assert result.digest_bits == 256
+        assert result.attempts == 4096
+        path = tmp_path / f"{mode}.csv"
+        view = _analysis_view()
+        monkeypatch.setattr(view.filedialog, "asksaveasfilename", lambda **kwargs: str(path))
+        _button(tab, "save", "csv").invoke()
+        _pump(root, lambda: path.exists() and not tab._busy)
+        with path.open(newline="", encoding="utf-8") as stream:
+            row = next(csv.DictReader(stream))
+        assert row["scope"] == "full_sha256_bounded_search"
+        assert row["digest_bits"] == "256"
+        assert row["mode"] == mode
+        assert row["outcome"] == "budget_exhausted"
+        if mode == "second_preimage":
+            assert hashlib.sha256(bytes.fromhex(row["input_a_hex"])).hexdigest() == row["target_digest"]
+        elif mode == "preimage":
+            assert len(row["target_digest"]) == 64
+    finally:
+        tab.close()
+        root.destroy()
+
+
+@pytest.mark.gui
+def test_hash_search_gui_invalid_inputs_full_digest_and_cancel(monkeypatch):
+    root, tab = _make_tab()
+    try:
+        actions = [w for w in _walk(tab.widget)
+                   if isinstance(w, ttk.Button) and w.cget("text") == "Run hash search"]
+        assert actions, "Analysis must expose hashing security experiments"
+        run = actions[0]
+        tab._hash_attempts.set("100001")
+        run.invoke()
+        assert not tab._busy
+        assert "attempt" in tab._status.get().lower()
+        tab._hash_attempts.set("10")
+        run.invoke()
+        _pump(root, lambda: not tab._busy)
+        assert "no match within" in _visible(tab.widget).lower()
+        assert "full sha-256" in _visible(tab.widget).lower()
+        previous = tab._last_result
+        entered = threading.Event()
+        stopped = threading.Event()
+        original = _analysis_view().run_hash_search
+
+        def wait_for_cancel(*args, **kwargs):
+            entered.set()
+            try:
+                assert kwargs["cancel"].wait(2)
+                return original(*args, **kwargs)
+            finally:
+                stopped.set()
+
+        monkeypatch.setattr(_analysis_view(), "run_hash_search", wait_for_cancel)
+        run.invoke()
+        assert entered.wait(1)
+        assert run.instate(["disabled"])
+        _button(tab, "cancel").invoke()
+        assert stopped.wait(1)
+        _pump(root, lambda: not tab._busy)
+        assert "canceled" in tab._status.get().lower()
+        assert tab._last_result.outcome == "canceled"
+        assert not tab._last_result.complete
+        assert tab._last_result is not previous
+    finally:
+        tab.close()
+        root.destroy()
 
 
 class AuditMetricService(FakeService):
@@ -464,8 +599,8 @@ def test_rendered_tables_fit_native_text_without_widening_the_tab():
     font = tkfont.nametofont("TkDefaultFont")
 
     result_text = {
-        "workload": "Ciphertext",
-        "measurement": "Hex positions changed",
+        "workload": "Synthetic specimen",
+        "measurement": "Signature verification (µs)",
         "value": "61 / 128",
         "detail": "Observed 47.65625%",
     }

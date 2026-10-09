@@ -1,6 +1,7 @@
 """Isolated Ed25519 signature-verification specimen using synthetic data."""
 
 import hashlib
+import time
 import uuid
 
 from cryptography.exceptions import InvalidSignature
@@ -18,6 +19,12 @@ _SESSION_LABEL = b"SPARC synthetic signature specimen session v1"
 
 def make_specimen() -> tuple[bytes, bytes, bytes]:
     """Return a fresh synthetic public key, signed C2 context, and signature."""
+    public_key, signed_context, signature, _sign_ns = make_timed_specimen()
+    return public_key, signed_context, signature
+
+
+def make_timed_specimen() -> tuple[bytes, bytes, bytes, int]:
+    """Return a specimen with signing-only time; exclude keygen and encoding."""
     private_key = Ed25519PrivateKey.generate()
     public_key = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.Raw,
@@ -36,8 +43,10 @@ def make_specimen() -> tuple[bytes, bytes, bytes]:
     projection = signing_projection(payload)
     session_id = hashlib.sha256(_SESSION_LABEL).digest()
     signed_context = message_context(session_id, 0, 0, projection)
+    started = time.perf_counter_ns()
     signature = private_key.sign(signed_context)
-    return public_key, signed_context, signature
+    sign_ns = time.perf_counter_ns() - started
+    return public_key, signed_context, signature, sign_ns
 
 
 def verify_specimen(public_key: bytes, signed_bytes: bytes, signature: bytes) -> bool:

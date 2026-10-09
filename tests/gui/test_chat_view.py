@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import replace
 import queue
 import threading
 import time
@@ -394,7 +395,7 @@ def test_history_identity_includes_origin_and_message_id():
     root.destroy()
 
 
-def test_chat_inspector_scrollbar_reaches_security_details():
+def test_chat_inspector_timings_precede_long_ciphertext_and_scrollbar_reaches_it():
     root, tab, _service = _make_tab()
     tab.widget.master.pack_configure(fill="both", expand=True)
     root.geometry("800x600")
@@ -432,6 +433,8 @@ def test_chat_inspector_scrollbar_reaches_security_details():
 
     inspector.yview_moveto(0.0)
     top = inspector.yview()
+    first_visible = inspector.get("@0,0", f"@0,{max(0, inspector.winfo_height() - 3)}")
+    assert "Signature verification: 5.5 µs" in first_visible
     inspector.yview_moveto(1.0)
     root.update()
     bottom = inspector.yview()
@@ -439,10 +442,30 @@ def test_chat_inspector_scrollbar_reaches_security_details():
     assert bottom[0] > top[0]
     last_visible = inspector.index(f"@0,{max(0, inspector.winfo_height() - 3)}")
     viewport = inspector.get(inspector.index("@0,0"), last_visible)
-    assert "verify" in viewport.lower()
-    assert "µs" in viewport.lower() or "us" in viewport.lower()
+    assert "Y2Nj" in viewport
     tab.close()
     root.destroy()
+
+
+@pytest.mark.parametrize(("origin", "timings", "expected", "absent"), [
+    ("outgoing", Timings(hash_ns=1500, sign_ns=2500, encrypt_ns=3500),
+     "Signature generation: 2.5 µs", "Signature verification"),
+    ("incoming", Timings(hash_ns=1500, decrypt_ns=4500, verify_ns=5500),
+     "Signature verification: 5.5 µs", "Signature generation"),
+    ("outgoing", Timings(), "Signature generation: unavailable", "Signature verification"),
+])
+def test_chat_labels_local_signature_timings_by_message_origin(origin, timings, expected, absent):
+    root, tab, _service = _make_tab()
+    try:
+        inspection = replace(_inspection(), timings=timings)
+        tab.handle_event(_message("1" * 32, "message", inspection, origin=origin))
+        text = tab._inspector.get("1.0", "end-1c")
+        assert expected in text
+        assert absent not in text
+        assert text.index(expected) < text.index("Ciphertext")
+    finally:
+        tab.close()
+        root.destroy()
 
 
 def test_outgoing_inspector_uses_public_inspection_sequence():

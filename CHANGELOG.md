@@ -4,6 +4,8 @@
 
 ### Added
 
+- Manual IP refresh in Connection, local sender-generation and receiver-verification timings near the top of Chat, timed synthetic signature specimens, and cancellable full 256-bit SHA-256 collision/preimage/second-preimage searches with CSV exports.
+
 - Verified-receipt network benchmarks, bounded process resource sampling, and an Analysis tab with cancellable jobs, signature specimens, audit-verification measurements, and policy-labeled CSV exports.
 
 - Local six-operation cryptographic benchmarks, isolated signature specimens, and standalone analysis commands with reproducible raw/summary CSV exports.
@@ -38,6 +40,8 @@
 - Durably audit retry outcomes and stop networking after availability-audit failure.
 
 ### Fixed
+
+- Wait for startup identity dialogs to become visible before taking the modal grab, and handle cancellation if they are destroyed during startup.
 
 - Add the macOS Application Support data directory, private POSIX modes and fail-closed identity directory synchronization, with bundled-Tk setup guidance. Linux regression checks cover the Darwin branches; native Mac demo validation remains pending.
 

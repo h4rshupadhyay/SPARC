@@ -59,7 +59,8 @@ def unlock_identity_for_gui(root: tk.Misc, data_dir: Path):
 
     dialog = tk.Toplevel(root)
     dialog.title("Unlock SPARC identity")
-    dialog.transient(root)
+    if root.winfo_viewable():
+        dialog.transient(root)
     dialog.resizable(False, False)
     dialog.protocol("WM_DELETE_WINDOW", lambda: request_cancel())
     dialog.bind("<Escape>", lambda _event: request_cancel())
@@ -294,12 +295,13 @@ def unlock_identity_for_gui(root: tk.Misc, data_dir: Path):
 
     submit.configure(command=start_unlock)
     cancel_button.configure(command=request_cancel)
-    passphrase_entry.focus_set()
-    dialog.grab_set()
 
     prior_root_close = root.protocol("WM_DELETE_WINDOW")
     try:
         root.protocol("WM_DELETE_WINDOW", request_cancel)
+        dialog.wait_visibility()
+        passphrase_entry.focus_set()
+        dialog.grab_set()
         root.wait_window(dialog)
     except tk.TclError:
         # The root or dialog may have been destroyed outside the normal WM

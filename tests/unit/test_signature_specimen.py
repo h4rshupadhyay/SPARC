@@ -94,3 +94,32 @@ def test_unrelated_generated_identity_cannot_verify_specimen():
 
     assert unrelated_public_key != public_key
     assert specimen.verify_specimen(unrelated_public_key, signed_bytes, signature) is False
+
+
+def test_specimen_generation_timer_excludes_key_generation_and_context_setup(monkeypatch):
+    specimen = _specimen_module()
+    timed = getattr(specimen, "make_timed_specimen", None)
+    assert callable(timed), "Timed signature generation must be available"
+    clock = [0]
+    real_key = Ed25519PrivateKey.generate()
+
+    class MeasuredKey:
+        def public_key(self):
+            clock[0] += 100_000
+            return real_key.public_key()
+
+        def sign(self, context):
+            clock[0] += 2500
+            return real_key.sign(context)
+
+    class KeyFactory:
+        @staticmethod
+        def generate():
+            clock[0] += 1_000_000
+            return MeasuredKey()
+
+    monkeypatch.setattr(specimen, "Ed25519PrivateKey", KeyFactory)
+    monkeypatch.setattr(specimen.time, "perf_counter_ns", lambda: clock[0])
+    public_key, context, signature, sign_ns = timed()
+    assert sign_ns == 2500
+    assert specimen.verify_specimen(public_key, context, signature)

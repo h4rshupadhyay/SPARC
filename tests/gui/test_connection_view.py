@@ -7,6 +7,7 @@ import socket
 import threading
 import tkinter as tk
 from tkinter import TclError, ttk
+from types import SimpleNamespace
 
 import pytest
 
@@ -146,6 +147,109 @@ def test_interfaces_have_labels_and_copyable_endpoints(monkeypatch):
     assert copied
     tab.close()
     root.destroy()
+
+
+@pytest.mark.parametrize("listening", [False, True])
+def test_refresh_ips_replaces_stale_endpoints_preserving_connection_settings(monkeypatch, listening):
+    import psutil
+
+    interfaces = {
+        "Old Wi-Fi": [SimpleNamespace(
+            family=socket.AF_INET, address="192.168.1.8",
+            netmask="255.255.255.0", broadcast=None, ptp=None,
+        )],
+    }
+    monkeypatch.setattr(psutil, "net_if_addrs", lambda: interfaces)
+    service = FakeService()
+    root, tab = _make_tab(service)
+    try:
+        tab._bind_ip.set("0.0.0.0")
+        tab._bind_port.set("47657")
+        tab._peer_ip.set("10.0.0.20")
+        tab._peer_port.set("47658")
+        if listening:
+            tab.handle_event(ServiceEvent("state", {
+                "state": "listening", "reason": "listener_started",
+                "endpoint": {"ip": "0.0.0.0", "port": 47655},
+            }))
+        settings = [w.get() for w in _walk(tab.widget) if isinstance(w, ttk.Entry)]
+        listener_text = tab._listener_text.get()
+        copied = []
+        tab.widget.clipboard_clear = lambda: None
+        tab.widget.clipboard_append = copied.append
+        refresh_buttons = [w for w in _walk(tab.widget)
+                           if isinstance(w, ttk.Button) and w.cget("text") == "Refresh IPs"]
+        assert refresh_buttons, "Network changes need a Refresh IPs action"
+        interfaces = {
+            "New Wi-Fi": [SimpleNamespace(
+                family=socket.AF_INET, address="10.0.0.8",
+                netmask="255.255.255.0", broadcast=None, ptp=None,
+            )],
+        }
+        for _ in range(3):
+            refresh_buttons[0].invoke()
+            root.update()
+        texts = _texts(tab.widget)
+        assert "192.168.1.8" not in texts
+        assert "Old Wi-Fi" not in texts
+        assert texts.count("10.0.0.8") == 1
+        assert "New Wi-Fi" in texts
+        copy_buttons = [w for w in _walk(tab.widget)
+                        if isinstance(w, ttk.Button) and w.cget("text") == "Copy endpoint"]
+        assert len(copy_buttons) == 1
+        copy_buttons[0].invoke()
+        assert copied == ["10.0.0.8:47655" if listening else "10.0.0.8:47657"]
+        assert [w.get() for w in _walk(tab.widget) if isinstance(w, ttk.Entry)] == settings
+        assert tab._listener_text.get() == listener_text
+        assert service.calls == []
+    finally:
+        tab.close()
+        root.destroy()
+
+
+@pytest.mark.parametrize("discovery_error", [False, True])
+def test_refresh_ips_clears_unavailable_addresses_and_recovers(monkeypatch, discovery_error):
+    import psutil
+
+    interfaces = {"Wi-Fi": [SimpleNamespace(
+        family=socket.AF_INET, address="192.168.1.8",
+        netmask="255.255.255.0", broadcast=None, ptp=None,
+    )]}
+    monkeypatch.setattr(psutil, "net_if_addrs", lambda: interfaces)
+    root, tab = _make_tab()
+    try:
+        refresh_buttons = [w for w in _walk(tab.widget)
+                           if isinstance(w, ttk.Button) and w.cget("text") == "Refresh IPs"]
+        assert refresh_buttons, "Network changes need a Refresh IPs action"
+        if discovery_error:
+            def unavailable():
+                raise OSError("interface discovery failed")
+            monkeypatch.setattr(psutil, "net_if_addrs", unavailable)
+        else:
+            interfaces = {}
+        refresh_buttons[0].invoke()
+        root.update()
+        texts = _texts(tab.widget)
+        assert "192.168.1.8" not in texts
+        assert not any(isinstance(w, ttk.Button) and w.cget("text") == "Copy endpoint"
+                       for w in _walk(tab.widget))
+        if discovery_error:
+            assert any("could not" in text.lower() and "ipv4" in text.lower() for text in texts)
+        else:
+            assert any("no ipv4 addresses" in text.lower() for text in texts)
+        monkeypatch.setattr(psutil, "net_if_addrs", lambda: {"Wi-Fi": [SimpleNamespace(
+            family=socket.AF_INET, address="10.0.0.8",
+            netmask="255.255.255.0", broadcast=None, ptp=None,
+        )]})
+        refresh_buttons[0].invoke()
+        root.update()
+        texts = _texts(tab.widget)
+        assert "10.0.0.8" in texts
+        assert not any("could not" in text.lower() or "no ipv4 addresses" in text.lower()
+                       for text in texts)
+    finally:
+        tab.close()
+        root.destroy()
 
 
 def test_pairing_shows_immutable_own_and_peer_fingerprints():
@@ -335,6 +439,7 @@ def test_connection_controls_reachable_at_supported_sizes(monkeypatch):
 
         buttons = [child for child in _walk(tab.widget) if isinstance(child, ttk.Button)]
         required = (
+            "refresh ips",
             "approve", "reject", "forget peer", "start listening", "stop listening",
             "connect", "disconnect",
         )

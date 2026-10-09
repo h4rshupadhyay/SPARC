@@ -87,6 +87,96 @@ def _submit_button(top):
     )
 
 
+def test_dialog_is_viewable_before_modal_grab(tmp_path, monkeypatch):
+    unlock = _unlock_api()
+    from sparc.models import SparcError
+
+    root = _root_or_skip()
+    main_thread = threading.get_ident()
+    grabs = []
+    original_grab_set = tk.Toplevel.grab_set
+
+    def observe_grab(dialog, *args, **kwargs):
+        assert threading.get_ident() == main_thread
+        assert dialog.winfo_viewable(), "dialog must be mapped before modal grab"
+        result = original_grab_set(dialog, *args, **kwargs)
+        grabs.append(dialog)
+        return result
+
+    monkeypatch.setattr(tk.Toplevel, "grab_set", observe_grab)
+
+    data_dir = tmp_path / "not-created"
+    callback_ids = []
+
+    def schedule_cancel_retry():
+        callback_ids.append(root.after(10, cancel_when_ready))
+
+    def cancel_when_ready():
+        dialog = _dialog(root)
+        if dialog is None:
+            schedule_cancel_retry()
+            return
+        _button(dialog, "cancel").invoke()
+
+    callback_ids.append(root.after(100, cancel_when_ready))
+    fallback_id = root.after(5000, root.destroy)
+
+    try:
+        with pytest.raises(SparcError) as raised:
+            unlock(root, data_dir)
+        assert raised.value.code == "identity_unlock_cancelled"
+        assert len(grabs) == 1
+        assert not (data_dir / "identity.json").exists()
+    finally:
+        for after_id in (*callback_ids, fallback_id):
+            try:
+                root.after_cancel(after_id)
+            except tk.TclError:
+                pass
+        try:
+            root.destroy()
+        except tk.TclError:
+            pass
+
+
+def test_dialog_destroyed_before_visibility_is_cancelled(tmp_path, monkeypatch):
+    unlock = _unlock_api()
+    from sparc.models import SparcError
+
+    root = _root_or_skip()
+    original_wait_visibility = tk.Toplevel.wait_visibility
+    visibility_entered = []
+
+    def destroy_before_visible(dialog, *args, **kwargs):
+        visibility_entered.append(True)
+        dialog.after_idle(dialog.destroy)
+        return original_wait_visibility(dialog, *args, **kwargs)
+
+    monkeypatch.setattr(tk.Toplevel, "wait_visibility", destroy_before_visible)
+    data_dir = tmp_path / "destroyed-before-visible"
+    fallback_id = root.after(1000, root.destroy)
+
+    def exists(widget):
+        try:
+            return bool(widget.winfo_exists())
+        except tk.TclError:
+            return False
+
+    try:
+        with pytest.raises(SparcError) as raised:
+            unlock(root, data_dir)
+        assert raised.value.code == "identity_unlock_cancelled"
+        assert visibility_entered == [True]
+        assert not (data_dir / "identity.json").exists()
+    finally:
+        if exists(root):
+            try:
+                root.after_cancel(fallback_id)
+            except tk.TclError:
+                pass
+            root.destroy()
+
+
 def _fill(entries, values):
     assert len(entries) >= len(values)
     for entry, value in zip(entries, values):
