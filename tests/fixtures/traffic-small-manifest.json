@@ -1,0 +1,64 @@
+{
+  "captured_bytes": 262,
+  "packet_count": 5,
+  "packets": [
+    {
+      "captured_length": 54,
+      "dst": "10.0.0.2",
+      "dst_port": 47655,
+      "number": 1,
+      "protocol": "TCP",
+      "src": "10.0.0.1",
+      "src_port": 12345,
+      "timestamp": "1",
+      "wire_length": 54
+    },
+    {
+      "captured_length": 54,
+      "dst": "10.0.0.1",
+      "dst_port": 12345,
+      "number": 2,
+      "protocol": "TCP",
+      "src": "10.0.0.2",
+      "src_port": 47655,
+      "timestamp": "2",
+      "wire_length": 54
+    },
+    {
+      "captured_length": 46,
+      "dst": "10.0.0.2",
+      "dst_port": 2222,
+      "number": 3,
+      "protocol": "UDP",
+      "src": "10.0.0.1",
+      "src_port": 1111,
+      "timestamp": "3",
+      "wire_length": 46
+    },
+    {
+      "captured_length": 42,
+      "dst": null,
+      "dst_port": null,
+      "number": 4,
+      "protocol": "ARP",
+      "src": null,
+      "src_port": null,
+      "timestamp": "4",
+      "wire_length": 42
+    },
+    {
+      "captured_length": 66,
+      "dst": "2001:db8::2",
+      "dst_port": 4444,
+      "number": 5,
+      "protocol": "UDP",
+      "src": "2001:db8::1",
+      "src_port": 3333,
+      "timestamp": "5",
+      "wire_length": 66
+    }
+  ],
+  "source_bytes": 366,
+  "source_sha256": "bce1ddb3889550c41193e4cec7486f40547518c3f9840ca6fb1ba58332219505",
+  "wire_bytes": 262
+}

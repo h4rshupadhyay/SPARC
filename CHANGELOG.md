@@ -4,6 +4,8 @@
 
 ### Added
 
+- Lazy offline capture streaming with bounded cancellation and cleanup, safe TShark discovery, and deterministic synthetic PCAP decoding evidence.
+
 - Manual IP refresh in Connection, local sender-generation and receiver-verification timings near the top of Chat, timed synthetic signature specimens, and cancellable full 256-bit SHA-256 collision/preimage/second-preimage searches with CSV exports.
 
 - Verified-receipt network benchmarks, bounded process resource sampling, and an Analysis tab with cancellable jobs, signature specimens, audit-verification measurements, and policy-labeled CSV exports.
