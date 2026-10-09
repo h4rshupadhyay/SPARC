@@ -20,7 +20,7 @@ commits exist.
 | A2 Local benchmarks and exports | A2a-A2e | verified |
 | A3 Network and resource analysis | A3a-A3d | verified |
 | F1 Private identity key encryption at rest | F1 | verified on Linux; macOS branches regression checked; native demo pending |
-| T1 Capture normalization | T1a-T1d | pending |
+| T1 Capture normalization | T1a-T1d | verified; conditional commit pending |
 | T2 Traffic indexing and exports | T2a-T2d | pending |
 | T3 Traffic CLI and GUI | T3a-T3c | pending |
 
@@ -78,11 +78,11 @@ commits exist.
 | A3c | verified | A3 post-correction all-GUI/network/resource/metrics/export gate: 101 passed in 22.18s; actual Tk/default loopback evidence and Sol review passed | b53453b |
 | A3d | verified | A3 post-correction all-GUI/network/resource/metrics/export gate: 101 passed in 22.18s; actual Tk/default loopback evidence and Sol review passed | b53453b |
 | F1 | verified on Linux | Linux final suite 830 passed/9 Windows-only skipped (152.97 s); independent source review clear; Windows gate withdrawn by user on 2026-10-09 | 5dcf5df |
-| F1-Mac | verified on Linux | Darwin branch tests use real POSIX fds/modes; focused56passed5.84s; full847passed9Windows-only skipped158.65s; Sol source/quality clear; nativeMac unverified | uncommitted |
-| T1a | pending | Pending | pending |
-| T1b | pending | Pending | pending |
-| T1c | pending | Pending | pending |
-| T1d | pending | Pending | pending |
+| F1-Mac | verified on Linux | Darwin branch tests use real POSIX fds/modes; focused56passed5.84s; full847passed9Windows-only skipped158.65s; Sol source/quality clear; nativeMac unverified | 90d8d33 |
+| T1a | verified | Normalization RED/GREEN plus corrected T1 gate: 111 passed in 3.61 s, no skips | uncommitted |
+| T1b | verified | Discovery RED/GREEN plus corrected T1 gate: 111 passed in 3.61 s, no skips | uncommitted |
+| T1c | verified | Corrected T1 gate: 111 passed in 3.61 s, no skips; lifecycle and unexpected reader termination regressions included | uncommitted |
+| T1d | verified | Corrected T1 gate: 111 passed in 3.61 s, no skips; TShark 4.6.6 decoded all five synthetic frames | uncommitted |
 | T2a | pending | Pending | pending |
 | T2b | pending | Pending | pending |
 | T2c | pending | Pending | pending |
@@ -212,6 +212,10 @@ F1-Mac corrected focusedGREEN: `.venv/bin/python -m pytest tests/unit/test_stora
 
 F1-Mac full verification: `.venv/bin/python -m pytest -q --tb=short` — exit0, **847 passed / 9 native Windows skipped in 158.65 s**. Source frozen for the run; independent Sol scoped review clear/no findings. macOS defaults/POSIX-mode/directory-sync/Tk guidance implemented; native Apple Silicon/macOS Sequoia install, GUI/terminal/KDF and Linux↔Mac LAN evidence still pending. Exactly bounded source/test/setup changes; existing three plan edits preserved.
 
+F1-Mac committed as `90d8d33` after independent review and frozen847-pass fullsuite. Explicit10-file staging and stagedwhitespacecheck exit0; existingthreeplan edits preserved. T1a tests-only now running under fresh task-localLuna; Sol field/error/lifecycle packets are fixed in traffic workspace. No push of this new milestone requested.
+
+T1a API-absence RED: `.venv/bin/python -m pytest tests/unit/test_capture_normalization.py -q --tb=short` — exit1,56failed0.45s. All tests collected; intentionally nonexistent sparc.traffic/normalize_packet is the expected missingfeature (no syntax/transitive dependency failure). Scalar field/error assertions will run after module implementation; this is not real decoder evidence. Same task-localLuna now writes only models.py/capture.py normalization.
+
 
 ## User-requested IP, timing, and hashing additions
 
@@ -219,4 +223,16 @@ Completed: manual Connection IP refresh, local signature generation on outgoing 
 
 Controller integration gate on the exact completed-feature snapshot: `PYTHONPATH=/tmp/sparc-feature-verification-n6l3m5zu/src /home/harsh/SPARC/.worktrees/sparc-progress-check/.venv/bin/python -m pytest -q --tb=short` — exit 0, **883 passed / 9 platform-specific skips in 164.52 s**. The snapshot contains the tracked baseline plus these completed feature files; unfinished T1 capture files and local lab/checkpoint artifacts are excluded. Two new native Tk regressions failed before the startup correction and pass afterward. Native 800-pixel Analysis layout and a real 100,000-attempt full-digest collision search were checked with synthetic inputs. No-match results are bounded observations, not proofs of hash resistance.
 
-Independent scoped feature review found no actionable issues. Sol prescribed the identity mapping correction, including avoiding transient dialogs for hidden parents. Superpowers TDD, verification, review and branch-finishing checks were used; the Sol reasoning/Luna edits/controller command workflow was retained for the startup correction. Commit reference: this milestone commit; actual main push is recorded in the following controller exchange.
+Independent scoped feature review found no actionable issues. Sol prescribed the identity mapping correction, including avoiding transient dialogs for hidden parents. Superpowers TDD, verification, review and branch-finishing checks were used; the Sol reasoning/Luna edits/controller command workflow was retained for the startup correction. Committed and pushed to `origin/main` as `8e5378e`. Main checkout GUI/hash/specimen checks: 109 passed in 21.83 s, with one Tk variable-finalizer warning; the exact full snapshot gate above had no warnings. Main and origin/main were verified at the same commit before resuming T1a.
+
+T1a resumed after main push `8e5378e`. Sol ruling: retain the empty-value rejection case but guard its impossible empty-substring redaction assertion; all numeric packet fields must fit downstream signed SQLite INTEGER storage (ports remain 0–65535), and accessor errors are translated to field-only capture_parse_failed. Reused traffic-local Luna wrote tests first. Controller `.venv/bin/python -m pytest tests/unit/test_capture_normalization.py -q --tb=short`: RED exit1,12failed/60passed0.25s; GREEN exit0,72passed0.13s after the bounded normalization patch. No real capture decoder evidence in this unit. Local TShark 4.6.6 executable was downloaded/extracted to ignored `.tools/tshark/`; existing system decoder libraries were used, with provenance in `.demo/t1-evidence/tools.json`.
+
+T1b: controller `.venv/bin/python -m pytest tests/unit/test_tshark_discovery.py -q --tb=short` meaningful RED exit1,9failed/1passed0.19s on missing find_tshark; GREEN normalization+discovery exit0,82passed0.26s. Test infrastructure corrected to patch stdlib shutil directly and assert module absence after successful CLI SystemExit. Explicit paths do not fall back or launch a process; ordinary --check works without PyShark or TShark. No intermediate commit.
+
+Ruling: T1c uses packets_from_tshark(callback, close_tshark=False), a watcher that only cancels the reader, and one supervisor-owned close_async call after reader settlement — installed PyShark startup occurs before its default cleanup block and multiple cleanup owners can race — cost if wrong: cleanup must be revised before indexing depends on it. A 2-second join bounds caller waiting but does not confirm native termination; PyShark display-filter version probing can block synchronously. Cleanup uncertainty forbids completed EOF. Safe errors cross the queue without original packet-retaining tracebacks.
+
+T1c API-absence RED: `.venv/bin/python -m pytest tests/unit/test_capture_adapter.py -q --tb=short` — exit1,11failed0.19s, missing iter_capture. Controller separately identified SimpleNamespace cannot be weak-referenced; prescribed a weak-referenceable subclass for the packet-release fixture before implementation. Lifecycle production patch authorized only in capture.py; adapter tests are not real decoder evidence.
+
+T1d actual decoder evidence: TShark 4.6.6 decoded the deterministic synthetic source (5 packets, 262 captured/wire bytes, 366-byte PCAP; SHA-256 `bce1ddb3889550c41193e4cec7486f40547518c3f9840ca6fb1ba58332219505`). Actual `highest_protocol` labels were TCP, TCP, ENIP, ARP and DATA; UDP frame expectations remain transport-level and make no attack interpretation. After T1 independent review, two failure-path fixes were added: unrequested reader CancelledError/StopCapture now fails safely instead of becoming EOF, and discovery filesystem errors map to `tshark_missing`.
+
+Corrected T1 verification: exact focused review-regression RED and final green commands/results, plus source hash and decoder limits, are recorded in [T1 capture evidence](t1-capture-evidence.md). Final green was 111 passed in 3.61 s with no skips, including normalization, discovery, adapter, actual capture decode, CLI check and GUI CLI coverage. T1a-d are verified; Sol's scoped rereview passed with both findings closed and no introduced actionable issues. The milestone awaits its conditional commit. No full-suite pass is claimed: broader full-suite runs were interrupted.
