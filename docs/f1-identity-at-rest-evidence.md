@@ -1,10 +1,10 @@
 # F1 identity encryption at rest — verification evidence
 
-The user **withdrew Windows compatibility on 2026-10-09** and selected a MacBook for the demo. The Windows gate is no longer required. F1 is ready for its Linux-verified milestone commit; macOS compatibility and physical Linux↔macOS demo validation remain separate follow-up work. Linux implementation and independent source review are complete: the fresh post-correction full suite passed **830 tests**, with **9 native Windows skips**, exit **0**, in **152.97 seconds**. Both final review findings are fixed and scoped Sol rereview passed. The milestone commit is the remaining closure step; T1 work has not started.
+The user **withdrew Windows compatibility on 2026-10-09** and selected a MacBook for the demo. The Windows gate is no longer required. F1 is committed as `5dcf5df` after Linux verification; The macOS compatibility patch has Linux regression coverage; physical Linux↔macOS demo validation remains separate follow-up work. Linux implementation and independent source review are complete: the fresh post-correction full suite passed **830 tests**, with **9 native Windows skips**, exit **0**, in **152.97 seconds**. Both final review findings are fixed and scoped Sol rereview passed. T1 work has not started.
 
 ## Scope and environment
 
-The approved [design](superpowers/specs/2026-10-09-sparc-identity-at-rest-design.md) and [F1a–F1h plan](superpowers/plans/2026-10-09-sparc-identity-at-rest-plan.md) define the implementation and gates. The existing worktree is `.worktrees/sparc-progress-check`, branch `feat/sparc-progress-check`, HEAD `777dc75`; A3 baseline is `b53453b`. No intermediate F1 commits were made. Existing unrelated plan edits were preserved, and the main checkout was unchanged.
+The approved [design](superpowers/specs/2026-10-09-sparc-identity-at-rest-design.md) and [F1a–F1h plan](superpowers/plans/2026-10-09-sparc-identity-at-rest-plan.md) define the implementation and gates. The existing worktree is `.worktrees/sparc-progress-check`, branch `feat/sparc-progress-check`, pre-F1 HEAD `777dc75`; A3 baseline is `b53453b`. No intermediate F1 commits were made. Existing unrelated plan edits were preserved, and the main checkout was unchanged.
 
 All commands below ran from that worktree using its `.venv/bin/python`: Python **3.10.12**, cryptography **50.0.2**, OpenSSL **4.0.3 (29 Sep 2026)**. The root checkout interpreter lacks cryptography; dependencies were unchanged.
 
@@ -48,7 +48,7 @@ No real Windows NTFS runner/display was available. The following were unverified
 - Actual production-profile Argon2id measurement.
 - `python -m pytest tests/integration/test_identity_windows.py tests/unit/test_identity_codec.py tests/unit/test_identity_migration.py tests/unit/test_identity_console.py tests/integration/test_check_cli.py tests/integration/test_simulation.py tests/gui/test_identity_unlock.py -q`, then `python -m pytest -q` on Windows.
 
-Linux source/contract checks and native-test skips do not establish Windows correctness or release readiness. The user’s explicit platform change removes Windows results from F1 completion requirements. Recorded Linux results and independent source review satisfy the remaining verification gate; the F1 commit still precedes T1. The borrowed MacBook has not been tested here. macOS needs a default data-directory path and a review of POSIX permissions/directory sync before native startup, encryption, terminal/Tk and LAN demo validation.
+Linux source/contract checks and native-test skips do not establish Windows correctness or release readiness. The user’s explicit platform change removes Windows results from F1 completion requirements. Recorded Linux results and independent source review satisfy the remaining verification gate; the F1 commit still precedes T1. The borrowed MacBook has not been tested here. The bounded macOS default-path, POSIX-permission and directory-sync follow-up below is implemented; native startup, encryption, terminal/Tk and LAN demo validation remain pending.
 
 ## Recorded rulings
 
@@ -66,6 +66,14 @@ Final scope checks: `git diff --check` exited 0; untracked F1 files had no trail
 
 ## Platform follow-up
 
-The selected physical demo is Linux↔macOS. The existing shared storage helper currently lacks a macOS default and applies some permission/sync behavior only on Linux. The bounded follow-up should add `~/Library/Application Support/SPARC`, extend private POSIX handling to macOS while preserving existing Linux behavior, update Tk/setup guidance, and run focused regression checks. Actual Mac startup, hidden credentials/cancellation, encrypted identity persistence, KDF timing and LAN exchange must be exercised on the borrowed MacBook before the demo. The user confirmed Apple Silicon with macOS Sequoia; no native results are invented.
+The selected physical demo is Linux↔macOS. The bounded follow-up adds `~/Library/Application Support/SPARC`, extends private POSIX modes and directory synchronization to macOS while preserving Linux behavior, and updates Tk/setup guidance. Actual Mac startup, hidden credentials/cancellation, encrypted identity persistence, KDF timing and LAN exchange must be exercised on the borrowed MacBook before the demo. The user confirmed Apple Silicon with macOS Sequoia; no native results are invented.
 
-Borrowed demo machine: Apple Silicon MacBook running macOS Sequoia (user supplied). Native validation has not run. Current production/test surface was compared with the frozen milestone package plus scoped final-fix package and matches the reviewed, final-tested 830-pass tree; subsequent changes are platform-scope documentation only.
+Borrowed demo machine: Apple Silicon MacBook running macOS Sequoia (user supplied). Native validation has not run. At F1 milestone closure, the production/test surface matched the reviewed, final-tested 830-pass tree. The macOS follow-up below adds separately verified changes.
+
+Milestone commit: `5dcf5df` (`feat: encrypt persistent identity keys at rest`). Controller staged exactly 39 F1/source/test/evidence and platform-scope files, checked the staged diff (exit 0), then committed successfully. The three pre-existing plan edits stayed outside the commit. No merge, push, T1 work or native macOS validation occurred.
+
+## macOS compatibility patch verification
+
+The Darwin branches run against actual Linux files, file descriptors, mode bits and fsync calls selected by a platform monkeypatch. This proves the branch contracts, not native Sequoia/APFS behavior. The patch adds the macOS default, private 0700/0600 modes, 0644 nonprivate output, preserved external export-parent modes, ordinary file-then-directory sync and macOS Tk guidance. Every Darwin directory-sync error propagates; identity post-replace errors retain the encrypted candidate, return `identity_commit_uncertain` and prevent service initialization. Linux unsupported-errno behavior outside identity storage remains unchanged.
+
+Controller meaningful RED: 13 failed/33 passed in 5.33s. A single test observation was corrected after tracing two legitimate preexisting directory-verification calls; production stayed frozen. Focused GREEN with launch/check regressions: **56 passed in 5.84s**, exit0. Fresh frozen-tree full command `.venv/bin/python -m pytest -q --tb=short`: **847 passed / 9 native Windows skipped in 158.65s**, exit0. Independent Sol scoped source/quality review: clear, no findings. `git diff --check` is checked before staging. No native Mac execution or hardware-cache/power-loss guarantee is claimed.

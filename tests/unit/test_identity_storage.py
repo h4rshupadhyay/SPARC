@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 import secrets
 import stat
-import sys
 import threading
 import time
 
@@ -306,17 +305,21 @@ def test_post_replace_error_is_uncertain_not_rollback(tmp_path, monkeypatch):
     assert _owned_temps(directory, path) == []
 
 
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux directory descriptor durability contract")
-@pytest.mark.parametrize("failure_errno", [errno.EINVAL, errno.ENOSYS])
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory descriptor durability contract")
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+@pytest.mark.parametrize(
+    "failure_errno", [errno.EINVAL, errno.ENOTSUP, errno.ENOSYS, errno.EIO]
+)
 def test_swallowed_directory_fsync_error_is_uncertain_and_stops_service_startup(
-    tmp_path, monkeypatch, credential_provider, failure_errno
+    tmp_path, monkeypatch, credential_provider, platform, failure_errno
 ):
     storage = _storage()
     service_module = __import__("sparc.peer.service", fromlist=["PeerService"])
     from sparc.identity_codec import inspect_document
     from sparc.models import SparcError
 
-    data_dir = tmp_path / f"sync-failure-{failure_errno}"
+    monkeypatch.setattr(storage.sys, "platform", platform)
+    data_dir = tmp_path / f"sync-failure-{platform}-{failure_errno}"
     identity_path = data_dir / "identity.json"
     sync_failures = []
     initialization_attempts = []
@@ -349,6 +352,114 @@ def test_swallowed_directory_fsync_error_is_uncertain_and_stops_service_startup(
     assert published
     assert inspect_document(published).status == "encrypted_locked"
     assert _owned_temps(data_dir, identity_path) == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory descriptor sync is required")
+def test_darwin_identity_publication_syncs_pinned_directory(tmp_path, monkeypatch):
+    storage = _storage()
+    monkeypatch.setattr(storage.sys, "platform", "darwin")
+    candidate = _candidate()
+    directory = tmp_path / "darwin-pinned-store"
+    directory.mkdir(mode=0o700)
+    os.chmod(directory, 0o700)
+    path = directory / "identity.json"
+    real_fsync = os.fsync
+    real_dup = os.dup
+    duplicate_sources = []
+    pinned_directory_ids = []
+    sync_descriptors = []
+    sync_order = []
+    real_verify = storage._posix_verify_directory
+
+    def capture_verified_directory(path, *, create):
+        descriptor = real_verify(path, create=create)
+        info = os.fstat(descriptor)
+        pinned_directory_ids.append((info.st_dev, info.st_ino))
+        return descriptor
+
+    def capture_dup(descriptor):
+        duplicate = real_dup(descriptor)
+        duplicate_sources.append((descriptor, duplicate))
+        return duplicate
+
+    def record_fsync(descriptor):
+        info = os.fstat(descriptor)
+        if stat.S_ISREG(info.st_mode):
+            sync_order.append("file")
+        elif stat.S_ISDIR(info.st_mode):
+            sync_order.append("directory")
+            sync_descriptors.append(descriptor)
+            active_pinned_directory = storage._publication_directory_fd.get()
+            assert active_pinned_directory is not None
+            assert next(
+                source
+                for source, duplicate in reversed(duplicate_sources)
+                if duplicate == descriptor
+            ) == active_pinned_directory
+            assert path.read_bytes() == candidate
+            directory_info = directory.stat()
+            assert (info.st_dev, info.st_ino) == (
+                directory_info.st_dev,
+                directory_info.st_ino,
+            )
+        else:
+            pytest.fail("identity publication fsynced an unexpected descriptor type")
+        return real_fsync(descriptor)
+
+    monkeypatch.setattr(storage, "_posix_verify_directory", capture_verified_directory)
+    monkeypatch.setattr(storage.os, "dup", capture_dup)
+    monkeypatch.setattr(storage.os, "fsync", record_fsync)
+    storage.publish_identity(path, expected=None, candidate=candidate)
+
+    assert sync_order == ["file", "directory"]
+    assert duplicate_sources
+    assert sync_descriptors
+    assert path.read_bytes() == candidate
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert stat.S_IMODE((directory / ".identity.lock").stat().st_mode) == 0o600
+    assert duplicate_sources
+    directory_identity = (directory.stat().st_dev, directory.stat().st_ino)
+    assert pinned_directory_ids
+    assert all(identity == directory_identity for identity in pinned_directory_ids)
+    for descriptor in sync_descriptors:
+        with pytest.raises(OSError) as closed:
+            os.fstat(descriptor)
+        assert closed.value.errno == errno.EBADF
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory descriptor sync is required")
+def test_darwin_identity_file_sync_failure_preserves_original(tmp_path, monkeypatch):
+    storage = _storage()
+    monkeypatch.setattr(storage.sys, "platform", "darwin")
+    candidate = _candidate()
+    directory = tmp_path / "darwin-file-sync-failure"
+    directory.mkdir(mode=0o700)
+    os.chmod(directory, 0o700)
+    path = directory / "identity.json"
+    original = b"existing identity snapshot"
+    path.write_bytes(original)
+    os.chmod(path, 0o600)
+    real_fsync = os.fsync
+    fsynced_types = []
+
+    def fail_regular_file_fsync(descriptor):
+        info = os.fstat(descriptor)
+        if stat.S_ISREG(info.st_mode):
+            fsynced_types.append("file")
+            raise OSError(errno.EIO, "injected temporary-file sync failure")
+        fsynced_types.append("directory")
+        return real_fsync(descriptor)
+
+    monkeypatch.setattr(storage.os, "fsync", fail_regular_file_fsync)
+    _expect_code(
+        "identity_write_failed",
+        lambda: storage.publish_identity(path, expected=original, candidate=candidate),
+    )
+
+    assert fsynced_types == ["file"]
+    assert path.read_bytes() == original
+    assert _owned_temps(directory, path) == []
 
 
 @pytest.mark.skipif(os.name != "posix", reason="directory descriptor swap check uses POSIX links")

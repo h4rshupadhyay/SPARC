@@ -154,6 +154,21 @@ def test_platform_paths_and_owner_modes(tmp_path, monkeypatch, credential_provid
     assert stat.S_IMODE((data_dir / "identity.json").stat().st_mode) == 0o600
 
 
+def test_darwin_data_directory_default_and_override(tmp_path, monkeypatch):
+    import sparc.storage as storage
+    from sparc.storage import resolve_data_dir
+
+    home = tmp_path / "home"
+    monkeypatch.setattr(Path, "home", lambda: home)
+    monkeypatch.setattr(storage.sys, "platform", "darwin")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "foreign-xdg"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "foreign-localappdata"))
+
+    assert resolve_data_dir(None) == home / "Library" / "Application Support" / "SPARC"
+    relative_override = Path("explicit-relative-store")
+    assert resolve_data_dir(relative_override) == relative_override
+
+
 def test_atomic_write_failure_preserves_existing_file(tmp_path, monkeypatch):
     import sparc.storage as storage
     from sparc.storage import atomic_write

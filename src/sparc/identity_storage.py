@@ -410,7 +410,7 @@ def _replace(source: Path, destination: Path) -> None:
 
 
 def _sync_directory(directory: Path) -> None:
-    if not sys.platform.startswith("linux"):
+    if not (sys.platform.startswith("linux") or sys.platform == "darwin"):
         return
     pinned = _publication_directory_fd.get()
     if pinned is not None:

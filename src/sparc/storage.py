@@ -23,6 +23,9 @@ def resolve_data_dir(override: Path | None) -> Path:
             )
         return Path(local_app_data) / "SPARC"
 
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "SPARC"
+
     if sys.platform.startswith("linux"):
         xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
         if xdg_config_home:
@@ -35,12 +38,12 @@ def resolve_data_dir(override: Path | None) -> Path:
 
 
 def secure_private_store(path: Path) -> None:
-    """Create the store directory and restrict existing Linux identity/trust files."""
+    """Create the store directory and restrict existing POSIX identity/trust files."""
     store_path = Path(path)
     parent = store_path.parent
     try:
         parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if sys.platform.startswith("linux"):
+        if sys.platform.startswith("linux") or sys.platform == "darwin":
             os.chmod(parent, 0o700)
             if store_path.exists():
                 os.chmod(store_path, 0o600)
@@ -52,20 +55,26 @@ def secure_private_store(path: Path) -> None:
 
 
 def _sync_parent_directory(parent: Path) -> None:
-    if not sys.platform.startswith("linux"):
+    linux = sys.platform.startswith("linux")
+    darwin = sys.platform == "darwin"
+    if not (linux or darwin):
         return
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     try:
         directory_fd = os.open(parent, flags)
     except OSError as exc:
-        if exc.errno in (errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS):
+        if linux and exc.errno in (
+            errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS
+        ):
             return
         raise
     try:
         try:
             os.fsync(directory_fd)
         except OSError as exc:
-            if exc.errno not in (errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS):
+            if not linux or exc.errno not in (
+                errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP, errno.ENOSYS
+            ):
                 raise
     finally:
         os.close(directory_fd)
@@ -87,8 +96,8 @@ def atomic_write(
     destination = Path(path)
     parent = destination.parent
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    linux = sys.platform.startswith("linux")
-    if linux and secure_parent:
+    private_posix = sys.platform.startswith("linux") or sys.platform == "darwin"
+    if private_posix and secure_parent:
         os.chmod(parent, 0o700)
 
     descriptor = -1
@@ -97,7 +106,7 @@ def atomic_write(
         descriptor, temporary_path = tempfile.mkstemp(
             prefix=f".{destination.name}.", suffix=".tmp", dir=parent
         )
-        if linux:
+        if private_posix:
             os.fchmod(descriptor, 0o600 if private else 0o644)
         with os.fdopen(descriptor, "wb") as stream:
             descriptor = -1

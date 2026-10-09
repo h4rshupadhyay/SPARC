@@ -39,6 +39,8 @@
 
 ### Fixed
 
+- Add the macOS Application Support data directory, private POSIX modes and fail-closed identity directory synchronization, with bundled-Tk setup guidance. Linux regression checks cover the Darwin branches; native Mac demo validation remains pending.
+
 - Clear network rates for canceled summary aggregation and coalesce GUI operation-metric bursts while preserving raw observations.
 
 - Preserve verified-prefix counts when checkpoint verification fails after scanning.

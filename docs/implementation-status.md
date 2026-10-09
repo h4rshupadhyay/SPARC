@@ -19,7 +19,7 @@ commits exist.
 | A1 Sensitivity analysis | A1a-A1c | verified |
 | A2 Local benchmarks and exports | A2a-A2e | verified |
 | A3 Network and resource analysis | A3a-A3d | verified |
-| F1 Private identity key encryption at rest | F1 | verified on Linux; macOS demo follow-up pending |
+| F1 Private identity key encryption at rest | F1 | verified on Linux; macOS branches regression checked; native demo pending |
 | T1 Capture normalization | T1a-T1d | pending |
 | T2 Traffic indexing and exports | T2a-T2d | pending |
 | T3 Traffic CLI and GUI | T3a-T3c | pending |
@@ -77,7 +77,8 @@ commits exist.
 | A3b | verified | A3 post-correction all-GUI/network/resource/metrics/export gate: 101 passed in 22.18s; actual Tk/default loopback evidence and Sol review passed | b53453b |
 | A3c | verified | A3 post-correction all-GUI/network/resource/metrics/export gate: 101 passed in 22.18s; actual Tk/default loopback evidence and Sol review passed | b53453b |
 | A3d | verified | A3 post-correction all-GUI/network/resource/metrics/export gate: 101 passed in 22.18s; actual Tk/default loopback evidence and Sol review passed | b53453b |
-| F1 | verified on Linux | Linux final suite 830 passed/9 Windows-only skipped (152.97 s); independent source review clear; Windows gate withdrawn by user on 2026-10-09 | pending |
+| F1 | verified on Linux | Linux final suite 830 passed/9 Windows-only skipped (152.97 s); independent source review clear; Windows gate withdrawn by user on 2026-10-09 | 5dcf5df |
+| F1-Mac | verified on Linux | Darwin branch tests use real POSIX fds/modes; focused56passed5.84s; full847passed9Windows-only skipped158.65s; Sol source/quality clear; nativeMac unverified | uncommitted |
 | T1a | pending | Pending | pending |
 | T1b | pending | Pending | pending |
 | T1c | pending | Pending | pending |
@@ -92,11 +93,11 @@ commits exist.
 
 ## Additional security task
 
-- [ ] **F1: Encrypt persistent private identity keys at rest.** Requested on 2026-10-09; schedule after A3 tasks and their validation are complete, before starting T1. Execution order: A3 → F1 → T1 → T2 → T3. Replace the Base64-only private-key storage in `identity.json` with encrypted storage. The approved passphrase/Argon2id/Fernet design fixes the unlock, format and failure contracts; Windows compatibility was withdrawn by the user on 2026-10-09; native macOS demo readiness is tracked separately. No unprotected decryption secret is stored alongside the encrypted key. Preserve the existing public key/fingerprint and audit verification when migrating version-1 identities, retain restrictive file permissions, and ensure wrong credentials, corruption, and migration failures never replace the identity. Include CLI/GUI unlock cancellation and regression coverage.
+- [x] **F1: Encrypt persistent private identity keys at rest.** Requested on 2026-10-09; schedule after A3 tasks and their validation are complete, before starting T1. Execution order: A3 → F1 → T1 → T2 → T3. Replace the Base64-only private-key storage in `identity.json` with encrypted storage. The approved passphrase/Argon2id/Fernet design fixes the unlock, format and failure contracts; Windows compatibility was withdrawn by the user on 2026-10-09; native macOS demo readiness is tracked separately. No unprotected decryption secret is stored alongside the encrypted key. Preserve the existing public key/fingerprint and audit verification when migrating version-1 identities, retain restrictive file permissions, and ensure wrong credentials, corruption, and migration failures never replace the identity. Include CLI/GUI unlock cancellation and regression coverage.
   - [x] Before coding, Sol fixes the unlock mechanism, encrypted format, migration and failure contracts, plus exact lettered task interfaces, allowed files, and test assertions. F1 remains an additional pending milestone; these contracts and its lettered task breakdown must be fixed before execution.
   - [x] Luna writes only the prescribed tests; the controller runs each meaningful RED check and records the actual command and result. The same Luna then implements each bounded task; the controller runs GREEN plus affected identity, trust, audit, handshake, CLI, and GUI checks, recording actual commands and results per unit.
-  - [ ] Before T1 starts, Sol performs an independent F1 security/integration milestone review. The controller commits F1 only after its gates pass and records the resulting ref here.
-  Status: implementation, Linux verification and independent milestone review complete. Windows gate withdrawn by the user. Milestone commit is the remaining closure step; macOS demo readiness is separate. See [F1 evidence](f1-identity-at-rest-evidence.md).
+  - [x] Before T1 starts, Sol performs an independent F1 security/integration milestone review. The controller committed F1 after its remaining gates passed: `5dcf5df`.
+  Status: committed as `5dcf5df` after Linux verification and independent milestone review. Windows gate withdrawn by the user; macOS demo readiness is separate. See [F1 evidence](f1-identity-at-rest-evidence.md).
 
 ## Unresolved decisions
 
@@ -202,3 +203,11 @@ F1h final corrected Linux verification: `.venv/bin/python -m pytest -q` — exit
 Platform scope update on 2026-10-09: user no longer requires Windows compatibility and has borrowed a MacBook for the demo. Windows tests/KDF/native checks are withdrawn requirements, not passes. The current Linux F1 source remains unchanged and its final 830 passed/9 Windows-only skipped gate plus independent review stand; no repeat suite is needed for this documentation-only requirement change. F1 can be committed, then T1 may start. macOS readiness is a separate bounded follow-up: default data directory, private POSIX permission/sync handling, Tk/setup guidance and actual Mac/LAN verification; Target confirmed as Apple Silicon with macOS Sequoia. No native macOS result yet.
 
 Borrowed demo machine: Apple Silicon MacBook running macOS Sequoia (user supplied). Native validation has not run. Current production/test surface was compared with the frozen milestone package plus scoped final-fix package and matches the reviewed, final-tested 830-pass tree; subsequent changes are platform-scope documentation only.
+
+F1 milestone committed as `5dcf5df` on `feat/sparc-progress-check`: 39 explicitly staged F1/source/test/evidence and platform-scope files. Staged whitespace check exited 0. Three existing plan edits were preserved outside the commit; no merge or push. T1 has not started.
+
+F1-Mac meaningful RED: `.venv/bin/python -m pytest tests/unit/test_storage.py tests/unit/test_identity_storage.py tests/unit/test_identity.py -q --tb=short` — exit1,13failed33passed5.33s. Actual Darwin branch defaults/modebits/directory-fsync calls missing; no fixture errors. Same Luna now implements bounded Sol contract (no crypto/interface changes). Native Apple Silicon/macOS Sequoia remains unverified.
+
+F1-Mac corrected focusedGREEN: `.venv/bin/python -m pytest tests/unit/test_storage.py tests/unit/test_identity_storage.py tests/unit/test_identity.py tests/integration/test_gui_cli.py tests/integration/test_check_cli.py -q --tb=short` — exit0,56passed5.84s. New Darwin branches run with realLinuxPOSIXfiles/fds; no nativeMacclaim. Source frozen for fullsuite and independent Solreview.
+
+F1-Mac full verification: `.venv/bin/python -m pytest -q --tb=short` — exit0, **847 passed / 9 native Windows skipped in 158.65 s**. Source frozen for the run; independent Sol scoped review clear/no findings. macOS defaults/POSIX-mode/directory-sync/Tk guidance implemented; native Apple Silicon/macOS Sequoia install, GUI/terminal/KDF and Linux↔Mac LAN evidence still pending. Exactly bounded source/test/setup changes; existing three plan edits preserved.

@@ -69,7 +69,9 @@ def main(argv: list[str] | None = None) -> int:
             raise
         print(
             "SPARC GUI requires Tk. Install python3-tk on Debian or Ubuntu, or install "
-            "CPython for Windows with Tcl/Tk support, then run `python -m sparc` again.",
+            "CPython for Windows with Tcl/Tk support. On macOS, use the official python.org "
+            "CPython installer with bundled Tcl/Tk, then verify Tk with `python -m tkinter` "
+            "using the same interpreter and environment. Run `python -m sparc` again.",
             file=sys.stderr,
         )
         return 2

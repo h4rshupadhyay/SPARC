@@ -22,6 +22,29 @@ The project pins its runtime and development dependencies in `pyproject.toml`. S
 python -m sparc --data-dir "$HOME/.local/share/sparc/device-a"
 ```
 
+## macOS
+
+For Apple Silicon and macOS Sequoia, use Python 3.10 or newer from the official [python.org macOS universal2 installer](https://docs.python.org/3/using/mac.html). Use its normal GIL-enabled interpreter; the installer includes native Tcl/Tk support. Create and activate the environment with that same interpreter:
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[dev]'
+python -m tkinter
+python -m sparc --check
+python -m sparc
+```
+
+`python -m tkinter` should open its check window. Run it with the same Python interpreter and environment used to launch SPARC. The default identity directory is `~/Library/Application Support/SPARC`; explicit paths still override it. For two local devices, quote paths with spaces:
+
+```sh
+python -m sparc --data-dir "$HOME/Library/Application Support/SPARC/device-a"
+python -m sparc --data-dir "$HOME/Library/Application Support/SPARC/device-b"
+```
+
+SPARC applies ordinary POSIX private-mode hardening to its store, identity, lock, and temporary files. If the filesystem reports an error while synchronizing the identity directory after publication, SPARC fails closed and keeps the already-published encrypted identity; it does not roll back or start the service. Use the normal local user data directory. Arbitrary external or remote filesystems have not been validated. The native macOS installation, Tk window, identity creation and reload, and Linux-to-Mac LAN chat remain unverified until exercised on an actual Mac. Python's [Tkinter documentation](https://docs.python.org/3/library/tkinter.html) describes `python -m tkinter` as the installation check; Apple's [file-system guidance](https://developer.apple.com/documentation/foundation/using-the-file-system-effectively) documents the Application Support location.
+
 ## Windows
 
 Install Python 3.10 or newer using the official CPython installer and include the Tcl/Tk support. Open PowerShell in the project directory:
