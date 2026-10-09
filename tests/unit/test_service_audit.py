@@ -23,8 +23,8 @@ def _report(*, valid=True):
     )
 
 
-def test_audit_head_is_fresh_exact_public_snapshot(tmp_path):
-    service = PeerService(tmp_path)
+def test_audit_head_is_fresh_exact_public_snapshot(tmp_path, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     try:
         first = service.audit_head()
         assert set(first) == {
@@ -40,8 +40,8 @@ def test_audit_head_is_fresh_exact_public_snapshot(tmp_path):
         service.close()
 
 
-def test_verify_forwards_composed_service_and_caller_cancellation(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
+def test_verify_forwards_composed_service_and_caller_cancellation(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     caller_cancel = threading.Event()
     predicates = []
 
@@ -66,8 +66,8 @@ def test_verify_forwards_composed_service_and_caller_cancellation(tmp_path, monk
         service.close()
 
 
-def test_audit_read_works_after_sticky_failure_but_export_refuses(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
+def test_audit_read_works_after_sticky_failure_but_export_refuses(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     monkeypatch.setattr(service._audit, "head_snapshot", lambda *, cancelled=None: {
         "log_id": "1" * 32,
         "last_record_number": 0,
@@ -86,8 +86,8 @@ def test_audit_read_works_after_sticky_failure_but_export_refuses(tmp_path, monk
         service.close()
 
 
-def test_verify_caller_cancellation_raises_operation_cancelled(tmp_path):
-    service = PeerService(tmp_path)
+def test_verify_caller_cancellation_raises_operation_cancelled(tmp_path, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     caller_cancel = threading.Event()
     caller_cancel.set()
     try:
@@ -98,8 +98,8 @@ def test_verify_caller_cancellation_raises_operation_cancelled(tmp_path):
         service.close()
 
 
-def test_checkpoint_storage_failure_latches_without_event_queue_capacity(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
+def test_checkpoint_storage_failure_latches_without_event_queue_capacity(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
 
     def fail_export(_path, *, cancelled=None):
         raise SparcError("audit_storage_failed", "injected checkpoint fsync failure")
@@ -119,8 +119,8 @@ def test_checkpoint_storage_failure_latches_without_event_queue_capacity(tmp_pat
         service.close()
 
 
-def test_checkpoint_cancellation_does_not_latch_audit_failure(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
+def test_checkpoint_cancellation_does_not_latch_audit_failure(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     caller_cancel = threading.Event()
 
     def cancel_export(_path, *, cancelled=None):
@@ -139,8 +139,8 @@ def test_checkpoint_cancellation_does_not_latch_audit_failure(tmp_path, monkeypa
         service.close()
 
 
-def test_service_closed_cancellation_reaches_audit_wrapper(tmp_path):
-    service = PeerService(tmp_path)
+def test_service_closed_cancellation_reaches_audit_wrapper(tmp_path, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     service.close()
     with pytest.raises(SparcError) as raised:
         service.verify_audit()

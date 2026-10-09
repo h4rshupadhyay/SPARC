@@ -4,8 +4,10 @@ import base64
 import binascii
 import hashlib
 import ipaddress
+import os
 from pathlib import Path
 import re
+import stat
 import threading
 
 from cryptography.hazmat.primitives import serialization
@@ -13,6 +15,15 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from .encoding import canonical, parse_object
 from .models import Endpoint, Identity, SparcError
+from . import identity_codec as _identity_codec
+from . import identity_storage as _identity_storage
+from .identity_codec import (
+    CancelPredicate,
+    CredentialProvider,
+    IdentityCredentials,
+    IdentityInfo,
+    IdentityUnlockRequest,
+)
 from .storage import atomic_write, secure_private_store
 
 
@@ -48,21 +59,89 @@ def _decode_key(value: object, field: str) -> bytes:
     return decoded
 
 
-def _load_existing(path: Path) -> Identity:
+_HISTORY_FILES = (
+    "trusted_peers.json",
+    "audit.jsonl",
+    "audit-checkpoint.json",
+    "simulation-checkpoint.json",
+)
+_UNLOCK_ISSUER = object()
+
+
+class _UnlockedStore:
+    """Private, redacted, single-use credential handoff."""
+
+    __slots__ = (
+        "_data_dir", "_path", "_snapshot", "_identity", "_issuer", "_consumed", "_guard"
+    )
+
+    def __init__(self, data_dir, path, snapshot, identity, *, _issuer_token=None):
+        if _issuer_token is not _UNLOCK_ISSUER:
+            raise SparcError("invalid_identity", "Unlocked identity handles can only be issued internally")
+        self._data_dir = data_dir
+        self._path = path
+        self._snapshot = snapshot
+        self._identity = identity
+        self._issuer = _UNLOCK_ISSUER
+        self._consumed = False
+        self._guard = threading.Lock()
+
+    def __repr__(self):
+        return "<UnlockedStore>"
+
+
+def _absolute_data_dir(data_dir: Path) -> Path:
+    # abspath makes a stable handoff path without resolving symlink ancestors.
+    supplied = Path(data_dir)
+    if ".." in supplied.parts:
+        raise SparcError("data_permissions_failed", "Identity storage path contains an unsafe component")
+    return Path(os.path.abspath(os.fspath(supplied)))
+
+
+def _check_cancelled(cancelled: CancelPredicate | None) -> None:
+    _identity_codec._check_cancelled(cancelled)
+
+
+def _request_credentials(
+    provider: CredentialProvider | None,
+    purpose: str,
+    data_dir: Path,
+    fingerprint: str | None,
+    cancelled: CancelPredicate | None,
+) -> bytes:
+    _check_cancelled(cancelled)
+    if provider is None:
+        raise SparcError("identity_credentials_required", "Identity credentials are required")
     try:
-        raw = path.read_bytes()
-    except OSError as exc:
-        raise SparcError("identity_read_failed", "Could not read the identity store") from exc
+        supplied = provider(IdentityUnlockRequest(purpose, data_dir, fingerprint))
+    except SparcError:
+        raise
+    except Exception as exc:
+        raise SparcError("identity_unlock_cancelled", "Identity operation was canceled") from exc
+    _check_cancelled(cancelled)
+    if supplied is None:
+        raise SparcError("identity_unlock_cancelled", "Identity operation was canceled")
+    return _identity_codec.validate_credentials(supplied, purpose)
+
+
+def inspect_identity(data_dir: Path) -> IdentityInfo:
+    """Read and validate only bounded public identity metadata."""
+    directory = _absolute_data_dir(data_dir)
+    raw = _identity_storage.read_identity_file(directory / "identity.json")
+    if raw is None:
+        return IdentityInfo("absent", None, None, False)
+    return _identity_codec.inspect_document(raw)
+
+
+def _legacy_identity(raw: bytes) -> Identity:
     try:
         document = parse_object(raw)
     except SparcError as exc:
         raise SparcError("invalid_identity", "Identity store is corrupt") from exc
-
     if set(document) != {"version", "private_key", "public_key"}:
         raise SparcError("invalid_identity", "Identity store has unexpected fields")
     if type(document["version"]) is not int or document["version"] != 1:
         raise SparcError("invalid_identity", "Identity store version is unsupported")
-
     private_bytes = _decode_key(document["private_key"], "private_key")
     public_bytes = _decode_key(document["public_key"], "public_key")
     try:
@@ -71,40 +150,151 @@ def _load_existing(path: Path) -> Identity:
         raise SparcError("invalid_identity", "Identity private key is invalid") from exc
     if _raw_public_bytes(private_key) != public_bytes:
         raise SparcError("invalid_identity", "Identity public key does not match its private key")
-    return Identity(
-        private_key=private_key,
-        public_bytes=public_bytes,
-        fingerprint=hashlib.sha256(public_bytes).hexdigest(),
+    return Identity(private_key, public_bytes, hashlib.sha256(public_bytes).hexdigest())
+
+
+def _has_retained_history(directory: Path) -> bool:
+    for name in _HISTORY_FILES:
+        try:
+            (directory / name).lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise SparcError("data_permissions_failed", "Could not inspect identity history") from exc
+        return True
+    return False
+
+
+def _same_identity(left: Identity, right: Identity) -> bool:
+    return (
+        left.public_bytes == right.public_bytes
+        and left.fingerprint == right.fingerprint
+        and _raw_private_bytes(left.private_key) == _raw_private_bytes(right.private_key)
     )
 
 
-def _create_identity(path: Path) -> Identity:
-    private_key = Ed25519PrivateKey.generate()
-    private_bytes = _raw_private_bytes(private_key)
-    public_bytes = _raw_public_bytes(private_key)
-    document = {
-        "version": 1,
-        "private_key": base64.b64encode(private_bytes).decode("ascii"),
-        "public_key": base64.b64encode(public_bytes).decode("ascii"),
-    }
+def _unlock_store(
+    data_dir: Path,
+    *,
+    credential_provider: CredentialProvider | None = None,
+    cancelled: CancelPredicate | None = None,
+) -> _UnlockedStore:
+    directory = _absolute_data_dir(data_dir)
+    path = directory / "identity.json"
+    _check_cancelled(cancelled)
+
+    # Initial inspection is read-only. Validate legacy consistency before ever
+    # asking for credentials, and retain the exact bytes across the prompt.
+    initial = _identity_storage.read_identity_file(path)
+    if initial is None:
+        if _has_retained_history(directory):
+            raise SparcError("identity_missing", "Identity is missing while retained history exists")
+        purpose = "create"
+        legacy = None
+        info = IdentityInfo("absent", None, None, False)
+    else:
+        info = _identity_codec.inspect_document(initial)
+        legacy = _legacy_identity(initial) if info.status == "legacy_unencrypted" else None
+        purpose = "migrate" if legacy is not None else "unlock"
+
+    phrase = _request_credentials(
+        credential_provider, purpose, directory, info.fingerprint, cancelled
+    )
+    _check_cancelled(cancelled)
+
+    if initial is None:
+        private_key = Ed25519PrivateKey.generate()
+        public_bytes = _raw_public_bytes(private_key)
+        identity = Identity(private_key, public_bytes, hashlib.sha256(public_bytes).hexdigest())
+        expected = None
+    elif legacy is not None:
+        identity = legacy
+        expected = initial
+    else:
+        # Permission tightening and the private read happen only after the
+        # credential has been supplied and validated.
+        current = _identity_storage.read_private_identity_file(path, cancelled=cancelled)
+        if current != initial:
+            raise SparcError("identity_changed", "Identity changed while credentials were requested")
+        identity = _identity_codec.decode_identity(current, phrase, cancelled=cancelled)
+        return _UnlockedStore(directory, path, current, identity, _issuer_token=_UNLOCK_ISSUER)
+
+    candidate = _identity_codec.encode_identity(identity, phrase, cancelled=cancelled)
+    decoded = _identity_codec.decode_identity(candidate, phrase, cancelled=cancelled)
+    if not _same_identity(identity, decoded):
+        raise SparcError("invalid_identity", "Encrypted identity self-check failed")
+    _check_cancelled(cancelled)
+    _identity_storage.publish_identity(path, expected, candidate, cancelled=cancelled)
+    # Publication cannot be rolled back. A cancellation now retains the same
+    # encrypted key and prevents callers from starting a service.
+    _check_cancelled(cancelled)
+    committed = _identity_storage.read_private_identity_file(path, cancelled=cancelled)
+    if committed != candidate:
+        raise SparcError("identity_changed", "Identity changed after publication")
+    return _UnlockedStore(directory, path, committed, decoded, _issuer_token=_UNLOCK_ISSUER)
+
+
+def _consume_unlocked_store(
+    handle: _UnlockedStore,
+    *,
+    cancelled: CancelPredicate | None = None,
+) -> tuple[Path, Identity]:
+    if type(handle) is not _UnlockedStore or getattr(handle, "_issuer", None) is not _UNLOCK_ISSUER:
+        raise SparcError("invalid_identity", "Unlocked identity handle is invalid")
+    _check_cancelled(cancelled)
+    with handle._guard:
+        if handle._consumed:
+            raise SparcError("invalid_identity", "Unlocked identity handle has already been consumed")
+        _check_cancelled(cancelled)
+        if os.name == "posix":
+            directory_fd = _identity_storage._posix_verify_directory(
+                handle._data_dir, create=False
+            )
+            try:
+                with _identity_storage.identity_lock(
+                    handle._path, cancelled=cancelled, _directory_fd=directory_fd
+                ):
+                    _check_cancelled(cancelled)
+                    _verify_handle_directory_binding(handle._data_dir, directory_fd)
+                    current = _identity_storage._read_under_lock(handle._path, directory_fd)
+                    _verify_handle_directory_binding(handle._data_dir, directory_fd)
+                    if current != handle._snapshot:
+                        raise SparcError("identity_changed", "Identity changed after it was unlocked")
+            finally:
+                os.close(directory_fd)
+        else:
+            with _identity_storage.identity_lock(handle._path, cancelled=cancelled):
+                _check_cancelled(cancelled)
+                current = _identity_storage.read_identity_file(handle._path)
+                if current != handle._snapshot:
+                    raise SparcError("identity_changed", "Identity changed after it was unlocked")
+        handle._consumed = True
+        return handle._data_dir, handle._identity
+
+
+def _verify_handle_directory_binding(directory: Path, directory_fd: int) -> None:
     try:
-        atomic_write(path, canonical(document), private=True)
+        opened = os.fstat(directory_fd)
+        current = directory.lstat()
     except OSError as exc:
-        raise SparcError("identity_write_failed", "Could not create the identity store") from exc
-    return Identity(
-        private_key=private_key,
-        public_bytes=public_bytes,
-        fingerprint=hashlib.sha256(public_bytes).hexdigest(),
+        raise SparcError("data_permissions_failed", "Identity directory changed during handoff") from exc
+    if not stat.S_ISDIR(current.st_mode) or (opened.st_dev, opened.st_ino) != (
+        current.st_dev, current.st_ino
+    ):
+        raise SparcError("data_permissions_failed", "Identity directory changed during handoff")
+
+
+def load_identity(
+    data_dir: Path,
+    *,
+    credential_provider: CredentialProvider | None = None,
+    cancelled: CancelPredicate | None = None,
+) -> Identity:
+    """Load, create, or migrate the local identity using explicit credentials."""
+    handle = _unlock_store(
+        data_dir, credential_provider=credential_provider, cancelled=cancelled
     )
-
-
-def load_identity(data_dir: Path) -> Identity:
-    """Load an existing identity or create a new one when its store is absent."""
-    path = Path(data_dir) / "identity.json"
-    secure_private_store(path)
-    if path.exists():
-        return _load_existing(path)
-    return _create_identity(path)
+    return handle._identity
 
 
 def _validate_public_key(public_key: bytes) -> tuple[bytes, str]:

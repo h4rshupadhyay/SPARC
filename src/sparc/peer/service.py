@@ -14,10 +14,16 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..audit import AuditLog, AuditReport
-from ..identity import TrustStore, load_identity
+from ..identity import (
+    TrustStore,
+    _consume_unlocked_store,
+    load_identity,
+)
+from ..identity_codec import CancelPredicate, CredentialProvider, _check_cancelled
 from ..models import (
     DeliveryReceipt,
     Endpoint,
+    Identity,
     Limits,
     ProtectedRecord,
     Role,
@@ -178,12 +184,43 @@ class _ReconnectChain:
 class PeerService:
     """Own persistent peer state, one connection attempt, and its active session."""
 
-    def __init__(self, data_dir: Path, limits: Limits = Limits()) -> None:
+    def __init__(
+        self,
+        data_dir: Path,
+        limits: Limits = Limits(),
+        *,
+        credential_provider: CredentialProvider | None = None,
+        cancelled: CancelPredicate | None = None,
+    ) -> None:
         if not isinstance(limits, Limits):
             raise SparcError("invalid_schema", "Peer service limits are invalid")
+        path = Path(data_dir)
+        identity = load_identity(
+            path, credential_provider=credential_provider, cancelled=cancelled
+        )
+        _check_cancelled(cancelled)
+        self._initialize(path, limits, identity)
+
+    @classmethod
+    def _from_unlocked_store(
+        cls,
+        handle,
+        limits: Limits = Limits(),
+        *,
+        cancelled: CancelPredicate | None = None,
+    ) -> "PeerService":
+        if not isinstance(limits, Limits):
+            raise SparcError("invalid_schema", "Peer service limits are invalid")
+        data_dir, identity = _consume_unlocked_store(handle, cancelled=cancelled)
+        _check_cancelled(cancelled)
+        service = cls.__new__(cls)
+        service._initialize(data_dir, limits, identity)
+        return service
+
+    def _initialize(self, data_dir: Path, limits: Limits, identity: Identity) -> None:
         self.data_dir = Path(data_dir)
         self.limits = limits
-        self._identity = load_identity(self.data_dir)
+        self._identity = identity
         self._trust = TrustStore(self.data_dir)
         self._audit = AuditLog(self.data_dir, self._identity)
         # Publish the retained head before creating or exposing any worker.

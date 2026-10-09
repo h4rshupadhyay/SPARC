@@ -6,7 +6,7 @@ from pathlib import Path
 import platform
 import sys
 
-from .identity import load_identity
+from .identity import inspect_identity
 from .models import SparcError
 from .storage import resolve_data_dir
 
@@ -27,7 +27,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.check:
         try:
             data_dir = resolve_data_dir(args.data_dir)
-            identity = load_identity(data_dir)
+            identity = inspect_identity(data_dir)
         except SparcError as exc:
             print(f"SPARC check failed: {exc.message}", file=sys.stderr)
             return 1
@@ -41,7 +41,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"psutil: {_distribution_version('psutil')}")
         print(f"PyCryptodome: {_distribution_version('pycryptodome')}")
         print(f"PyShark: {_distribution_version('pyshark')}")
-        print(f"Public fingerprint: {identity.fingerprint}")
+        if identity.status == "absent":
+            print("Identity: absent")
+            print("Public fingerprint: unavailable (identity absent)")
+        elif identity.status == "legacy_unencrypted":
+            print("Identity: legacy unencrypted; migration required; private key not verified")
+            print(
+                "Public fingerprint (unverified stored metadata): "
+                f"{identity.fingerprint}"
+            )
+        else:
+            print("Identity: encrypted; locked; private key not verified")
+            print(
+                "Public fingerprint (unverified stored metadata): "
+                f"{identity.fingerprint}"
+            )
         return 0
 
     try:
@@ -60,6 +74,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     except SparcError as exc:
+        if exc.code == "identity_unlock_cancelled":
+            print("SPARC launch canceled.", file=sys.stderr)
+            return 130
         if exc.code == "gui_unavailable":
             print(f"SPARC GUI unavailable: {exc.message}", file=sys.stderr)
             return 2

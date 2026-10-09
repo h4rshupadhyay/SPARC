@@ -8,6 +8,17 @@ import sys
 import pytest
 
 
+def test_missing_credentials_provider_is_a_domain_error_without_directory_creation(tmp_path):
+    from sparc.identity import load_identity
+    from sparc.models import SparcError
+
+    data_dir = tmp_path / "provider-required"
+    with pytest.raises(SparcError) as raised:
+        load_identity(data_dir)
+    assert raised.value.code == "identity_credentials_required"
+    assert not data_dir.exists()
+
+
 def _valid_identity_document():
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -32,11 +43,11 @@ def _valid_identity_document():
     )
 
 
-def test_identity_is_persistent(tmp_path):
+def test_identity_is_persistent(tmp_path, credential_provider):
     from sparc.identity import load_identity
 
-    first = load_identity(tmp_path)
-    second = load_identity(tmp_path)
+    first = load_identity(tmp_path, credential_provider=credential_provider)
+    second = load_identity(tmp_path, credential_provider=credential_provider)
     assert first.public_bytes == second.public_bytes
     assert len(first.public_bytes) == 32
     assert first.fingerprint == second.fingerprint
@@ -45,7 +56,7 @@ def test_identity_is_persistent(tmp_path):
     assert all(character in "0123456789abcdef" for character in first.fingerprint)
 
 
-def test_corrupt_identity_is_not_replaced(tmp_path):
+def test_corrupt_identity_is_not_replaced(tmp_path, credential_provider):
     from sparc.identity import load_identity
     from sparc.models import SparcError
 
@@ -54,7 +65,7 @@ def test_corrupt_identity_is_not_replaced(tmp_path):
     path.write_bytes(original)
 
     with pytest.raises(SparcError):
-        load_identity(tmp_path)
+        load_identity(tmp_path, credential_provider=credential_provider)
     assert path.read_bytes() == original
 
 
@@ -68,7 +79,9 @@ def test_corrupt_identity_is_not_replaced(tmp_path):
         lambda document: document.update(private_key=base64.b64encode(b"short").decode("ascii")),
     ],
 )
-def test_identity_rejects_invalid_schema_or_key_encoding_without_rewriting(tmp_path, mutate):
+def test_identity_rejects_invalid_schema_or_key_encoding_without_rewriting(
+    tmp_path, mutate, credential_provider
+):
     from sparc.identity import load_identity
     from sparc.models import SparcError
 
@@ -79,11 +92,11 @@ def test_identity_rejects_invalid_schema_or_key_encoding_without_rewriting(tmp_p
     path.write_bytes(original)
 
     with pytest.raises(SparcError):
-        load_identity(tmp_path)
+        load_identity(tmp_path, credential_provider=credential_provider)
     assert path.read_bytes() == original
 
 
-def test_identity_rejects_mismatched_private_and_public_keys(tmp_path):
+def test_identity_rejects_mismatched_private_and_public_keys(tmp_path, credential_provider):
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from sparc.encoding import canonical
@@ -101,11 +114,11 @@ def test_identity_rejects_mismatched_private_and_public_keys(tmp_path):
     path.write_bytes(original)
 
     with pytest.raises(SparcError):
-        load_identity(tmp_path)
+        load_identity(tmp_path, credential_provider=credential_provider)
     assert path.read_bytes() == original
 
 
-def test_platform_paths_and_owner_modes(tmp_path, monkeypatch):
+def test_platform_paths_and_owner_modes(tmp_path, monkeypatch, credential_provider):
     import sparc.storage as storage
     from sparc.identity import load_identity
     from sparc.storage import resolve_data_dir
@@ -136,7 +149,7 @@ def test_platform_paths_and_owner_modes(tmp_path, monkeypatch):
     assert resolve_data_dir(None) == home / ".config" / "sparc"
 
     data_dir = tmp_path / "private-store"
-    load_identity(data_dir)
+    load_identity(data_dir, credential_provider=credential_provider)
     assert stat.S_IMODE(data_dir.stat().st_mode) == 0o700
     assert stat.S_IMODE((data_dir / "identity.json").stat().st_mode) == 0o600
 
@@ -159,17 +172,19 @@ def test_atomic_write_failure_preserves_existing_file(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux owner-mode policy")
-def test_loading_existing_identity_restricts_directory_and_file_without_rewriting(tmp_path):
+def test_loading_existing_identity_restricts_directory_and_file_without_rewriting(
+    tmp_path, credential_provider
+):
     from sparc.identity import load_identity
 
     data_dir = tmp_path / "identity-dir"
-    original_identity = load_identity(data_dir)
+    original_identity = load_identity(data_dir, credential_provider=credential_provider)
     path = data_dir / "identity.json"
     original = path.read_bytes()
     path.chmod(0o644)
     data_dir.chmod(0o755)
 
-    loaded = load_identity(data_dir)
+    loaded = load_identity(data_dir, credential_provider=credential_provider)
 
     assert loaded.public_bytes == original_identity.public_bytes
     assert path.read_bytes() == original
@@ -178,22 +193,28 @@ def test_loading_existing_identity_restricts_directory_and_file_without_rewritin
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux owner-mode policy")
-def test_identity_permission_restriction_failure_is_a_domain_error(tmp_path, monkeypatch):
-    import sparc.storage as storage
+def test_identity_permission_restriction_failure_is_a_domain_error(
+    tmp_path, monkeypatch, credential_provider
+):
+    import sparc.identity_storage as identity_storage
     from sparc.identity import load_identity
     from sparc.models import SparcError
 
     data_dir = tmp_path / "identity-dir"
-    load_identity(data_dir)
+    load_identity(data_dir, credential_provider=credential_provider)
     path = data_dir / "identity.json"
     original = path.read_bytes()
     path.chmod(0o644)
     data_dir.chmod(0o755)
 
-    def fail_chmod(*_args, **_kwargs):
-        raise PermissionError("simulated chmod failure")
+    attempts = []
 
-    monkeypatch.setattr(storage.os, "chmod", fail_chmod)
+    def fail_identity_fchmod(descriptor, mode):
+        attempts.append((descriptor, mode))
+        raise PermissionError("simulated identity mode failure")
+
+    monkeypatch.setattr(identity_storage.os, "fchmod", fail_identity_fchmod)
     with pytest.raises(SparcError):
-        load_identity(data_dir)
+        load_identity(data_dir, credential_provider=credential_provider)
+    assert attempts
     assert path.read_bytes() == original

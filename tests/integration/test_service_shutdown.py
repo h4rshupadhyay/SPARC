@@ -46,10 +46,10 @@ def _terminal_state(service, expected_reason=None, timeout=2.0):
     raise AssertionError("terminal state event was not delivered")
 
 
-def test_disconnect_during_pairing_cancels_workers(tmp_path):
-    bob = PeerService(tmp_path / "bob")
+def test_disconnect_during_pairing_cancels_workers(tmp_path, credential_provider):
+    bob = PeerService(tmp_path / "bob", credential_provider=credential_provider)
     endpoint = bob.start_listener("127.0.0.1", 0)
-    alice = PeerService(tmp_path / "alice")
+    alice = PeerService(tmp_path / "alice", credential_provider=credential_provider)
     try:
         alice.connect(endpoint)
         _pairing_request(alice)
@@ -316,8 +316,8 @@ def test_closure_audit_failure_publishes_error_terminal_state(peer_pair, monkeyp
     assert terminal.data["reason"] == "audit_storage_failed"
 
 
-def test_handshake_security_rejection_is_audited_with_safe_reason(tmp_path):
-    service = PeerService(tmp_path)
+def test_handshake_security_rejection_is_audited_with_safe_reason(tmp_path, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     endpoint = service.start_listener("127.0.0.1", 0)
     peer = socket.create_connection((endpoint.ip, endpoint.port), timeout=2)
     try:
@@ -442,8 +442,8 @@ def test_operation_events_have_units_success_and_public_context(peer_pair):
         assert not {"private_key", "public_key", "session_id", "traffic_key"}.intersection(row["context"])
 
 
-def test_stop_listener_cancels_a_bind_in_progress_and_allows_restart(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
+def test_stop_listener_cancels_a_bind_in_progress_and_allows_restart(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     original_socket = socket.socket
     entered_bind = threading.Event()
     release_bind = threading.Event()

@@ -1,5 +1,7 @@
 # SPARC progress-check design
 
+> **Demo target update — 2026-10-09:** The user replaced the Windows laptop with a borrowed MacBook. Current required demo platforms are Linux and macOS; Windows compatibility is no longer required. Earlier Windows-specific text below records the original brief and is superseded for platform scope. Physical Linux↔macOS evidence remains distinct from loopback simulation and is not yet recorded.
+
 Date: 2026-10-08 (Asia/Kolkata)
 Status: Text-only written specification approved by the user on 2026-10-08. Signed audit logs and the clarified security/analysis requirements are retained. The teacher permitted limiting the progress check to text. Implementation planning is authorized; implementation has not begun. The user subsequently selected GPT-6.1 Sol for reasoning/planning, Luna for coding, and direct tools for commands; the linked implementation plans have been revised to that workflow.
 

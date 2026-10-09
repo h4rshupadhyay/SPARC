@@ -1,5 +1,7 @@
 # F1: persistent identity encryption at rest
 
+> **Platform scope update — 2026-10-09:** The user withdrew Windows compatibility and selected a borrowed MacBook for the demo. The demo target is now Linux ↔ macOS. Windows implementation notes below are retained as historical context; real Windows tests and measurements are no longer required gates and have not passed. F1 can close on its recorded Linux verification and independent review. macOS compatibility changes and native Mac demo validation are a separate follow-up before the physical-device demo; neither is inferred from Linux results.
+
 Status: **Proposal awaiting user review.** No product implementation, dependency change, or F1 completion is authorized by this document. Written-spec approval permits preparation of the implementation plan; implementation follows approval of that plan and its execution method.
 
 Date: 2026-10-09. Baseline: A3 verified and committed at `b53453b`.

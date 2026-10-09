@@ -11,8 +11,8 @@ from sparc.models import Limits, ServiceEvent, SparcError
 from sparc.peer.service import PeerService
 
 
-def test_listener_reports_actual_port_and_stop(tmp_path):
-    service = PeerService(tmp_path)
+def test_listener_reports_actual_port_and_stop(tmp_path, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     try:
         endpoint = service.start_listener("127.0.0.1", 0)
         assert endpoint.ip == "127.0.0.1"
@@ -35,8 +35,8 @@ def test_listener_reports_actual_port_and_stop(tmp_path):
         service.close()
 
 
-def test_second_connection_is_busy_before_handshake(tmp_path):
-    service = PeerService(tmp_path)
+def test_second_connection_is_busy_before_handshake(tmp_path, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     first = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     second = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -55,9 +55,9 @@ def test_second_connection_is_busy_before_handshake(tmp_path):
         service.close()
 
 
-def test_event_queue_cancel_wakes_producer(tmp_path):
+def test_event_queue_cancel_wakes_producer(tmp_path, credential_provider):
     limits = Limits(event_queue=1, cancel_poll_seconds=0.01)
-    service = PeerService(tmp_path, limits=limits)
+    service = PeerService(tmp_path, limits=limits, credential_provider=credential_provider)
     service._emit(ServiceEvent("test", {"index": 1}))
     started = threading.Event()
     finished = threading.Event()
@@ -85,27 +85,30 @@ def test_event_queue_cancel_wakes_producer(tmp_path):
         assert not producer.is_alive()
 
 
-def test_bad_startup_audit_blocks_service(tmp_path):
+def test_bad_startup_audit_blocks_service(tmp_path, credential_provider):
+    from sparc.identity import load_identity
+
+    load_identity(tmp_path, credential_provider=credential_provider)
     (tmp_path / "audit.jsonl").write_bytes(b"not a signed audit chain\n")
     with pytest.raises(SparcError) as raised:
-        PeerService(tmp_path)
+        PeerService(tmp_path, credential_provider=credential_provider)
     assert raised.value.code == "audit_verification_failed"
 
 
-def test_zero_head_checkpoint_log_id_survives_service_restart(tmp_path):
-    service = PeerService(tmp_path)
+def test_zero_head_checkpoint_log_id_survives_service_restart(tmp_path, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     service.close()
     checkpoint = json.loads((tmp_path / "audit-checkpoint.json").read_text("utf-8"))
     first_log_id = checkpoint["body"]["log_id"]
     assert checkpoint["body"]["last_record_number"] == 0
 
-    restarted = PeerService(tmp_path)
+    restarted = PeerService(tmp_path, credential_provider=credential_provider)
     restarted.close()
     checkpoint = json.loads((tmp_path / "audit-checkpoint.json").read_text("utf-8"))
     assert checkpoint["body"]["log_id"] == first_log_id
 
 
-def test_checkpoint_publication_failure_exposes_no_listener_or_worker(tmp_path, monkeypatch):
+def test_checkpoint_publication_failure_exposes_no_listener_or_worker(tmp_path, monkeypatch, credential_provider):
     calls = {"socket": 0, "thread_start": 0}
 
     def fail_checkpoint(self, path):
@@ -127,6 +130,6 @@ def test_checkpoint_publication_failure_exposes_no_listener_or_worker(tmp_path, 
     monkeypatch.setattr(socket, "socket", observe_socket)
     monkeypatch.setattr(threading.Thread, "start", observe_start)
     with pytest.raises(SparcError) as raised:
-        PeerService(tmp_path)
+        PeerService(tmp_path, credential_provider=credential_provider)
     assert raised.value.code == "audit_storage_failed"
     assert calls == {"socket": 0, "thread_start": 0}

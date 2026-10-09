@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from dataclasses import asdict, is_dataclass
 import hashlib
 import json
 import multiprocessing
 import os
 from pathlib import Path
+import stat
 import sys
 import time
-from typing import Any
+from typing import Any, Callable, TYPE_CHECKING, TypeAlias
+
+if TYPE_CHECKING:
+    from sparc.identity_codec import IdentityCredentials, IdentityUnlockRequest
 
 
 _PEER_NAMES = ("alice", "bob")
@@ -22,6 +27,12 @@ _GRACEFUL_JOIN_SECONDS = 3.0
 _TERMINATE_JOIN_SECONDS = 1.0
 _KILL_JOIN_SECONDS = 1.0
 _POLL_SECONDS = 0.1
+_MAX_CREDENTIAL_FRAME_BYTES = 4096
+_MAX_CREDENTIAL_BYTES = 1024
+
+SimulationCredentialProvider: TypeAlias = Callable[
+    [str, "IdentityUnlockRequest"], "IdentityCredentials | None"
+]
 
 
 def _safe_failure(peer: str, phase: str, code: str, reason: str) -> dict[str, str]:
@@ -215,6 +226,106 @@ def _send_message(connection, message: dict[str, Any]) -> bool:
         return False
 
 
+def _identity_purpose(info: Any) -> str:
+    return {
+        "absent": "create",
+        "legacy_unencrypted": "migrate",
+        "encrypted_locked": "unlock",
+    }.get(getattr(info, "status", None), "")
+
+
+def _encode_credential_frame(credentials: Any, purpose: str) -> bytes:
+    from sparc.encoding import canonical
+    from sparc.identity_codec import validate_credentials
+    from sparc.models import SparcError
+
+    phrase = validate_credentials(credentials, purpose)
+    confirmation = credentials.confirmation
+    frame_value = {
+        "kind": "IDENTITY_CREDENTIALS",
+        "passphrase": base64.b64encode(phrase).decode("ascii"),
+        "confirmation": (
+            "" if confirmation is None else base64.b64encode(confirmation).decode("ascii")
+        ),
+    }
+    try:
+        try:
+            frame = canonical(frame_value)
+        except (TypeError, ValueError) as error:
+            raise SparcError("identity_credentials_invalid", "Simulation credentials are invalid") from error
+        if type(frame) is not bytes or len(frame) > _MAX_CREDENTIAL_FRAME_BYTES:
+            raise SparcError("identity_credentials_invalid", "Simulation credentials exceed the bounded message size")
+        return frame
+    finally:
+        frame_value.clear()
+        phrase = None
+        confirmation = None
+
+
+def _decode_credential_frame(connection, purpose: str):
+    from sparc.encoding import canonical, parse_object
+    from sparc.identity_codec import IdentityCredentials, validate_credentials
+    from sparc.models import SparcError
+
+    deadline = time.monotonic() + _STARTUP_DEADLINE_SECONDS
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise SparcError("identity_credentials_required", "Peer credentials were not delivered before startup timed out")
+        try:
+            if not connection.poll(min(_POLL_SECONDS, remaining)):
+                continue
+            payload = connection.recv_bytes(maxlength=_MAX_CREDENTIAL_FRAME_BYTES)
+        except (EOFError, OSError) as error:
+            raise SparcError("identity_credentials_required", "Peer credentials were not delivered") from error
+        break
+
+    if type(payload) is not bytes or len(payload) > _MAX_CREDENTIAL_FRAME_BYTES:
+        raise SparcError("identity_credentials_invalid", "Peer credential message is invalid")
+    try:
+        message = parse_object(payload)
+        if canonical(message) != payload:
+            raise ValueError("noncanonical credential message")
+        if set(message) != {"kind", "passphrase", "confirmation"}:
+            raise ValueError("unexpected credential fields")
+        if type(message["kind"]) is not str or message["kind"] != "IDENTITY_CREDENTIALS":
+            raise ValueError("unexpected credential message")
+        encoded_phrase = message["passphrase"]
+        encoded_confirmation = message["confirmation"]
+        if type(encoded_phrase) is not str or type(encoded_confirmation) is not str:
+            raise ValueError("credential values must be strings")
+        phrase_ascii = encoded_phrase.encode("ascii", errors="strict")
+        phrase = base64.b64decode(phrase_ascii, validate=True)
+        if base64.b64encode(phrase).decode("ascii") != encoded_phrase:
+            raise ValueError("noncanonical passphrase encoding")
+        if not 1 <= len(phrase) <= _MAX_CREDENTIAL_BYTES:
+            raise ValueError("passphrase length is invalid")
+        if encoded_confirmation == "":
+            confirmation = None
+        else:
+            confirmation_ascii = encoded_confirmation.encode("ascii", errors="strict")
+            confirmation = base64.b64decode(confirmation_ascii, validate=True)
+            if base64.b64encode(confirmation).decode("ascii") != encoded_confirmation:
+                raise ValueError("noncanonical confirmation encoding")
+            if not 1 <= len(confirmation) <= _MAX_CREDENTIAL_BYTES:
+                raise ValueError("confirmation length is invalid")
+        credentials = IdentityCredentials(phrase, confirmation)
+        validate_credentials(credentials, purpose)
+    except (SparcError, ValueError, TypeError, UnicodeEncodeError) as error:
+        if isinstance(error, SparcError) and error.code == "identity_crypto_unavailable":
+            raise
+        raise SparcError("identity_credentials_invalid", "Peer credential message is invalid") from error
+    finally:
+        if "message" in locals():
+            message.clear()
+    phrase = None
+    confirmation = None
+    encoded_phrase = None
+    encoded_confirmation = None
+    phrase_ascii = None
+    return credentials
+
+
 def _child_main(
     peer_name: str,
     data_dir_value: str,
@@ -228,11 +339,53 @@ def _child_main(
     pending_network_ack = False
     network_ack_deadline = 0.0
     network_listener_stopped = False
+    credential_slot = []
+    unlocked_store = None
     try:
+        data_dir = Path(data_dir_value)
+        from sparc.identity import _unlock_store, inspect_identity
+        from sparc.identity_codec import IdentityUnlockRequest
+
+        identity_info = inspect_identity(data_dir)
+        purpose = _identity_purpose(identity_info)
+        if not purpose:
+            from sparc.models import SparcError
+
+            raise SparcError("invalid_identity", "Peer identity metadata is invalid")
+        credentials = _decode_credential_frame(connection, purpose)
+        credential_slot.append(credentials)
+        credentials = None
+        request_data_dir = Path(os.path.abspath(os.fspath(data_dir)))
+        request_fingerprint = identity_info.fingerprint
+        consumed_credentials = False
+
+        def provide_once(request):
+            nonlocal consumed_credentials
+            from sparc.models import SparcError
+
+            if (
+                type(request) is not IdentityUnlockRequest
+                or request.purpose != purpose
+                or Path(request.data_dir) != request_data_dir
+                or request.fingerprint != request_fingerprint
+                or consumed_credentials
+                or not credential_slot
+            ):
+                raise SparcError("identity_credentials_invalid", "Peer identity credentials are invalid")
+            consumed_credentials = True
+            return credential_slot.pop()
+
+        unlocked_store = _unlock_store(data_dir, credential_provider=provide_once)
+        if not consumed_credentials:
+            from sparc.models import SparcError
+
+            raise SparcError("identity_credentials_invalid", "Peer identity credentials were not consumed")
+        credential_slot.clear()
+
         from sparc.peer.service import PeerService
 
-        data_dir = Path(data_dir_value)
-        service = PeerService(data_dir)
+        service = PeerService._from_unlocked_store(unlocked_store)
+        unlocked_store = None
         endpoint = service.start_listener("127.0.0.1", requested_port)
         _send_message(connection, {
             "kind": "READY",
@@ -382,6 +535,8 @@ def _child_main(
             **_exception_failure(peer_name, phase, error),
         })
     finally:
+        credential_slot.clear()
+        unlocked_store = None
         if service is not None:
             try:
                 service.close()
@@ -430,11 +585,24 @@ def _validate_inputs(data_root: Any, port_a: Any, port_b: Any, text: Any) -> tup
     from sparc.models import SparcError
 
     try:
-        root = Path(data_root).expanduser().resolve()
+        supplied_root = Path(data_root).expanduser()
+        if ".." in supplied_root.parts:
+            raise SparcError("data_permissions_failed", "Simulation data path contains an unsafe component")
+        root = Path(os.path.abspath(os.fspath(supplied_root)))
     except (TypeError, ValueError, OSError, RuntimeError) as exc:
         raise SparcError("invalid_schema", "Simulation data root must be a valid path") from exc
-    if root.exists() and not root.is_dir():
-        raise SparcError("invalid_schema", "Simulation data root must be a directory")
+    try:
+        root_info = root.lstat()
+    except FileNotFoundError:
+        root_info = None
+    except OSError as exc:
+        raise SparcError("data_permissions_failed", "Simulation data root could not be inspected") from exc
+    if root_info is not None:
+        reparse = bool(getattr(root_info, "st_file_attributes", 0) & 0x400)
+        if stat.S_ISLNK(root_info.st_mode) or reparse:
+            raise SparcError("data_permissions_failed", "Simulation data root may not be a link")
+        if not stat.S_ISDIR(root_info.st_mode):
+            raise SparcError("invalid_schema", "Simulation data root must be a directory")
     for port in (port_a, port_b):
         if type(port) is not int or not 0 <= port <= 65535:
             raise SparcError("invalid_port", "Simulation ports must be integers from 0 through 65535")
@@ -456,15 +624,15 @@ def run_simulation(
     port_a: int = 0,
     port_b: int = 0,
     text: str = "SPARC ✓",
+    *,
+    credential_provider: SimulationCredentialProvider | None = None,
 ) -> dict:
     """Start two spawn-based local peers and return observed security evidence."""
     from sparc.models import SparcError
 
     root, encoded_text = _validate_inputs(data_root, port_a, port_b, text)
-    started_ns = time.perf_counter_ns()
-    deadline = time.monotonic() + _RUN_DEADLINE_SECONDS
     expected_sha256 = hashlib.sha256(encoded_text).hexdigest()
-    peer_dirs = {name: (root / name).resolve() for name in _PEER_NAMES}
+    peer_dirs = {name: root / name for name in _PEER_NAMES}
     peers = {name: _empty_peer(peer_dirs[name]) for name in _PEER_NAMES}
     transfers = [
         _empty_transfer("alice", "bob", text, expected_sha256),
@@ -501,6 +669,55 @@ def run_simulation(
         entry = _safe_failure(peer, current_phase, code, reason)
         if entry not in report["failures"]:
             report["failures"].append(entry)
+
+    # Inspect both peer paths before asking for credentials or creating the
+    # simulation root. Public inspection rejects links without following them.
+    from sparc.identity import inspect_identity
+    from sparc.identity_codec import IdentityUnlockRequest
+
+    identity_info = {}
+    for name in _PEER_NAMES:
+        try:
+            identity_info[name] = inspect_identity(peer_dirs[name])
+        except SparcError as error:
+            fail(name, "startup", error.code, error.message)
+    if report["failures"]:
+        report["elapsed_ns"] = 0
+        return report
+
+    if credential_provider is None or not callable(credential_provider):
+        raise SparcError("identity_credentials_required", "Simulation identity credentials are required")
+    credential_frames: dict[str, bytes] = {}
+    for name in _PEER_NAMES:
+        info = identity_info[name]
+        purpose = _identity_purpose(info)
+        if not purpose:
+            raise SparcError("invalid_identity", "Simulation peer identity metadata is invalid")
+        request = IdentityUnlockRequest(purpose, peer_dirs[name], info.fingerprint)
+        try:
+            supplied = credential_provider(name, request)
+        except SparcError:
+            credential_frames.clear()
+            raise
+        except Exception as error:
+            credential_frames.clear()
+            raise SparcError("identity_unlock_cancelled", "Simulation credential entry was canceled") from error
+        if supplied is None:
+            credential_frames.clear()
+            raise SparcError("identity_unlock_cancelled", "Simulation credential entry was canceled")
+        try:
+            credential_frames[name] = _encode_credential_frame(supplied, purpose)
+        except BaseException:
+            credential_frames.clear()
+            raise
+        finally:
+            supplied = None
+            request = None
+
+    credential_provider = None
+    identity_info.clear()
+    started_ns = time.perf_counter_ns()
+    deadline = time.monotonic() + _RUN_DEADLINE_SECONDS
 
     def send_command(peer: str, action: str, **values: Any) -> bool:
         connection = connections.get(peer)
@@ -640,6 +857,7 @@ def run_simulation(
         elif kind == "COMMAND_DONE":
             return
 
+    startup_deadline = min(deadline, time.monotonic() + _STARTUP_DEADLINE_SECONDS)
     try:
         root.mkdir(parents=True, exist_ok=True)
         context = multiprocessing.get_context("spawn")
@@ -660,8 +878,16 @@ def run_simulation(
             processes[name] = process
             connections[name] = parent_connection
             started_names.append(name)
+            frame = credential_frames.pop(name)
+            try:
+                parent_connection.send_bytes(frame)
+            except (BrokenPipeError, EOFError, OSError):
+                fail(name, "startup", "identity_credentials_required", "Could not deliver peer credentials")
+            finally:
+                frame = None
+            if report["failures"]:
+                break
 
-        startup_deadline = min(deadline, time.monotonic() + _STARTUP_DEADLINE_SECONDS)
         phase = "startup"
         while len(ready) < 2 and not report["failures"] and time.monotonic() < startup_deadline:
             for name in started_names:
@@ -769,6 +995,7 @@ def run_simulation(
     except Exception:
         fail("coordinator", phase, "simulation_error", "The coordinator encountered an unexpected runtime failure")
     finally:
+        credential_frames.clear()
         def drain_cleanup_messages() -> None:
             for name, connection in connections.items():
                 for _ in range(64):
@@ -888,13 +1115,19 @@ def run_simulation(
 
 def main(argv: list[str] | None = None) -> int:
     from sparc.models import SparcError
+    from sparc.identity_unlock import console_credentials
 
     parser = argparse.ArgumentParser(description="Run a local two-peer SPARC security simulation")
     parser.add_argument("--data-root", required=True, type=Path, help="parent directory for the two peer stores")
     parser.add_argument("--report", type=Path, help="write the JSON report to this UTF-8 file")
     args = parser.parse_args(argv)
+
+    def credentials_for_peer(peer_name: str, request):
+        print(f"{peer_name.title()} identity credentials:", file=sys.stderr)
+        return console_credentials(request)
+
     try:
-        report = run_simulation(args.data_root)
+        report = run_simulation(args.data_root, credential_provider=credentials_for_peer)
         encoded = json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2)
         if args.report is not None:
             args.report.write_text(encoded + "\n", encoding="utf-8")
@@ -902,6 +1135,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if report["complete"] else 1
     except SparcError as error:
         print(f"SPARC simulation input error [{error.code}]: {error.message}", file=sys.stderr)
+        if error.code == "identity_unlock_cancelled":
+            print("SPARC simulation canceled.", file=sys.stderr)
+            return 130
+        if error.code == "identity_credentials_required":
+            return 1
         return 2
     except OSError:
         print("SPARC simulation could not write the requested report", file=sys.stderr)

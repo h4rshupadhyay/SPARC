@@ -13,6 +13,7 @@ from ..storage import resolve_data_dir
 from .audit_view import AuditTab
 from .chat import ChatTab
 from .connection import ConnectionTab
+from .identity_unlock import unlock_identity_for_gui
 
 
 _POLL_MS = 100
@@ -37,7 +38,8 @@ def launch(data_dir: Path) -> None:
         root.geometry("960x760")
         root.minsize(800, 640)
         resolved_data_dir = resolve_data_dir(data_dir)
-        service = PeerService(resolved_data_dir)
+        handle = unlock_identity_for_gui(root, resolved_data_dir)
+        service = PeerService._from_unlocked_store(handle)
         app = SparcApp(root, service)
         app.add_tab("Connection", ConnectionTab(app.notebook, service))
         app.add_tab("Chat", ChatTab(app.notebook, service))

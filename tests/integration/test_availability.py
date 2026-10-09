@@ -365,8 +365,12 @@ def test_retry_outcome_audit_failure_stops_remaining_chain(peer_pair, monkeypatc
     )
 
 
-def test_initial_manual_tcp_failure_does_not_start_reconnect_chain(tmp_path):
-    service = PeerService(tmp_path / "initial-failure", Limits(reconnect_delays=(0.01, 0.02)))
+def test_initial_manual_tcp_failure_does_not_start_reconnect_chain(tmp_path, credential_provider):
+    service = PeerService(
+        tmp_path / "initial-failure",
+        Limits(reconnect_delays=(0.01, 0.02)),
+        credential_provider=credential_provider,
+    )
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     probe.bind(("127.0.0.1", 0))
     endpoint = Endpoint(*probe.getsockname())
@@ -385,9 +389,11 @@ def test_initial_manual_tcp_failure_does_not_start_reconnect_chain(tmp_path):
 
 
 def test_captured_responder_coordinator_is_cancelled_when_rate_audit_fails(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, credential_provider
 ):
-    service = PeerService(tmp_path / "captured-coordinator")
+    service = PeerService(
+        tmp_path / "captured-coordinator", credential_provider=credential_provider
+    )
     endpoint = service.start_listener("127.0.0.1", 0)
     coordinator_entered = threading.Event()
     release_coordinator = threading.Event()
@@ -753,10 +759,14 @@ def test_stop_cancels_retry_with_full_queue_and_preserves_latest_terminal(peer_p
 )
 @pytest.mark.parametrize("forget_old_pin", [False, True])
 def test_changed_but_separately_trusted_key_is_never_adopted(
-    peer_pair, tmp_path, forget_old_pin
+    peer_pair, tmp_path, forget_old_pin, credential_provider
 ):
     alice, bob = peer_pair.alice, peer_pair.bob
-    rogue = PeerService(tmp_path / "rogue", Limits(reconnect_delays=(0.05, 0.1, 0.2)))
+    rogue = PeerService(
+        tmp_path / "rogue",
+        Limits(reconnect_delays=(0.05, 0.1, 0.2)),
+        credential_provider=credential_provider,
+    )
     rogue_endpoint = rogue.start_listener("127.0.0.1", 0)
     old_bob_endpoint = peer_pair.bob_endpoint
     try:

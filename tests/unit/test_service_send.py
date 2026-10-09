@@ -33,12 +33,12 @@ def _wait_connected(service, timeout=6):
     assert service.state == "connected"
 
 
-def _connected_pair(tmp_path, limits=Limits()):
-    receiver = PeerService(tmp_path / "receiver", limits)
+def _connected_pair(tmp_path, limits=Limits(), *, credential_provider):
+    receiver = PeerService(tmp_path / "receiver", limits, credential_provider=credential_provider)
     sender = None
     try:
         endpoint = receiver.start_listener("127.0.0.1", 0)
-        sender = PeerService(tmp_path / "sender", limits)
+        sender = PeerService(tmp_path / "sender", limits, credential_provider=credential_provider)
         sender.connect(endpoint)
         sender_request = _wait_pairing(sender)
         sender.respond_to_pairing(sender_request.data["request_id"], True)
@@ -64,8 +64,8 @@ def _replace_enqueue(service, callback):
     return session
 
 
-def test_send_requires_connected(tmp_path):
-    service = PeerService(tmp_path)
+def test_send_requires_connected(tmp_path, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
     try:
         with pytest.raises(SparcError):
             service.send_text("hello")
@@ -74,9 +74,9 @@ def test_send_requires_connected(tmp_path):
 
 
 def test_send_attempt_audited_before_enqueue_and_storage_failure_sends_nothing(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, credential_provider
 ):
-    sender, receiver = _connected_pair(tmp_path)
+    sender, receiver = _connected_pair(tmp_path, credential_provider=credential_provider)
     wire_queue = []
 
     def capture(payload, *, control=False):
@@ -98,11 +98,11 @@ def test_send_attempt_audited_before_enqueue_and_storage_failure_sends_nothing(
         receiver.close()
 
 
-def test_timer_starts_before_hash_preparation(tmp_path, monkeypatch):
+def test_timer_starts_before_hash_preparation(tmp_path, monkeypatch, credential_provider):
     import sparc.peer.service as service_module
     from sparc.protocol.messages import prepare_text as real_prepare_text
 
-    sender, receiver = _connected_pair(tmp_path)
+    sender, receiver = _connected_pair(tmp_path, credential_provider=credential_provider)
     queue_payloads = []
     _replace_enqueue(sender, lambda payload, *, control=False: queue_payloads.append(payload))
     order = []
@@ -131,8 +131,8 @@ def test_timer_starts_before_hash_preparation(tmp_path, monkeypatch):
         receiver.close()
 
 
-def test_pending_is_reserved_and_send_attempt_is_durable_before_enqueue(tmp_path):
-    sender, receiver = _connected_pair(tmp_path)
+def test_pending_is_reserved_and_send_attempt_is_durable_before_enqueue(tmp_path, credential_provider):
+    sender, receiver = _connected_pair(tmp_path, credential_provider=credential_provider)
     observations = []
 
     def acknowledge_immediately(payload, *, control=False):
@@ -160,8 +160,8 @@ def test_pending_is_reserved_and_send_attempt_is_durable_before_enqueue(tmp_path
         receiver.close()
 
 
-def test_frame_bytes_are_the_actual_protected_frame_length(tmp_path):
-    sender, receiver = _connected_pair(tmp_path)
+def test_frame_bytes_are_the_actual_protected_frame_length(tmp_path, credential_provider):
+    sender, receiver = _connected_pair(tmp_path, credential_provider=credential_provider)
     queued = []
     _replace_enqueue(sender, lambda payload, *, control=False: queued.append(payload))
     try:
@@ -181,8 +181,8 @@ def test_frame_bytes_are_the_actual_protected_frame_length(tmp_path):
         receiver.close()
 
 
-def test_benchmark_record_limit_is_per_connection(tmp_path, monkeypatch):
-    sender, receiver = _connected_pair(tmp_path)
+def test_benchmark_record_limit_is_per_connection(tmp_path, monkeypatch, credential_provider):
+    sender, receiver = _connected_pair(tmp_path, credential_provider=credential_provider)
     session = _session(sender)
     receipt_ledger = sender._receipts
 
@@ -209,9 +209,9 @@ def test_benchmark_record_limit_is_per_connection(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("callback_name", ["_session_closed", "_finish_attempt"])
 def test_stale_attempt_terminal_callback_preserves_current_pending_receipt(
-    tmp_path, callback_name
+    tmp_path, callback_name, credential_provider
 ):
-    sender, receiver = _connected_pair(tmp_path)
+    sender, receiver = _connected_pair(tmp_path, credential_provider=credential_provider)
     queued = []
     session = _replace_enqueue(sender, lambda payload, *, control=False: queued.append(payload))
     try:
@@ -236,9 +236,9 @@ def test_stale_attempt_terminal_callback_preserves_current_pending_receipt(
 
 @pytest.mark.parametrize("failure", ["domain", "unexpected"])
 def test_old_send_audit_failure_preserves_replacement_pending_and_hash(
-    tmp_path, failure
+    tmp_path, failure, credential_provider
 ):
-    sender, receiver = _connected_pair(tmp_path)
+    sender, receiver = _connected_pair(tmp_path, credential_provider=credential_provider)
     old_attempt = sender._slot
     old_session = old_attempt.session
     entered_audit = threading.Event()
@@ -304,8 +304,8 @@ def test_old_send_audit_failure_preserves_replacement_pending_and_hash(
         receiver.close()
 
 
-def test_failed_enqueue_fails_only_its_message(tmp_path):
-    sender, receiver = _connected_pair(tmp_path)
+def test_failed_enqueue_fails_only_its_message(tmp_path, credential_provider):
+    sender, receiver = _connected_pair(tmp_path, credential_provider=credential_provider)
     queued = []
 
     def enqueue(payload, *, control=False):
@@ -329,9 +329,9 @@ def test_failed_enqueue_fails_only_its_message(tmp_path):
         receiver.close()
 
 
-def test_benchmark_byte_limit_is_per_connection(tmp_path):
+def test_benchmark_byte_limit_is_per_connection(tmp_path, credential_provider):
     limits = Limits(benchmark_records=100, benchmark_bytes=2)
-    sender, receiver = _connected_pair(tmp_path, limits)
+    sender, receiver = _connected_pair(tmp_path, limits, credential_provider=credential_provider)
     session = _session(sender)
 
     def complete_in_queue(payload, *, control=False):

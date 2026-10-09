@@ -152,11 +152,12 @@ def test_rejection_audit_failure_stops_listener_and_active_session(
 
 
 def test_connection_limit_precedes_handshake_and_rejection_audit_is_bounded(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, credential_provider
 ):
     service = PeerService(
         tmp_path / "listener",
         Limits(connections_per_source=2, connections_global=10),
+        credential_provider=credential_provider,
     )
     handshake_entered = threading.Event()
     handshake_calls = []

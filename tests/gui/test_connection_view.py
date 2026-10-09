@@ -394,9 +394,9 @@ def test_literal_ipv4_and_port_validation(ip, port, valid):
     root.destroy()
 
 
-def test_forget_peer_requires_explicit_action_and_audit(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
-    remote_identity = load_identity(tmp_path / "remote")
+def test_forget_peer_requires_explicit_action_and_audit(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
+    remote_identity = load_identity(tmp_path / "remote", credential_provider=credential_provider)
     endpoint = Endpoint("192.0.2.30", 47655)
     service._trust.pin(remote_identity.public_bytes, endpoint)
     fingerprint = remote_identity.fingerprint
@@ -428,9 +428,10 @@ def test_forget_peer_requires_explicit_action_and_audit(tmp_path, monkeypatch):
 @pytest.mark.parametrize(("fail_on", "expected_present"), [(1, True), (2, False)])
 def test_forget_audit_failures_are_truthful_and_fail_closed(
     tmp_path, monkeypatch, fail_on, expected_present,
+    credential_provider,
 ):
-    service = PeerService(tmp_path)
-    remote_identity = load_identity(tmp_path / "remote")
+    service = PeerService(tmp_path, credential_provider=credential_provider)
+    remote_identity = load_identity(tmp_path / "remote", credential_provider=credential_provider)
     endpoint = Endpoint("192.0.2.31", 47655)
     service._trust.pin(remote_identity.public_bytes, endpoint)
     fingerprint = remote_identity.fingerprint
@@ -457,9 +458,9 @@ def test_forget_audit_failures_are_truthful_and_fail_closed(
     service.close()
 
 
-def test_forget_refuses_occupied_slot_without_audit_or_mutation(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
-    remote_identity = load_identity(tmp_path / "remote")
+def test_forget_refuses_occupied_slot_without_audit_or_mutation(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
+    remote_identity = load_identity(tmp_path / "remote", credential_provider=credential_provider)
     endpoint = Endpoint("192.0.2.32", 47655)
     service._trust.pin(remote_identity.public_bytes, endpoint)
     fingerprint = remote_identity.fingerprint
@@ -475,9 +476,9 @@ def test_forget_refuses_occupied_slot_without_audit_or_mutation(tmp_path, monkey
     service.close()
 
 
-def test_forget_invalid_or_absent_fingerprint_has_no_audit_or_mutation(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
-    remote_identity = load_identity(tmp_path / "remote")
+def test_forget_invalid_or_absent_fingerprint_has_no_audit_or_mutation(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
+    remote_identity = load_identity(tmp_path / "remote", credential_provider=credential_provider)
     endpoint = Endpoint("192.0.2.36", 47655)
     service._trust.pin(remote_identity.public_bytes, endpoint)
     calls = []
@@ -496,9 +497,9 @@ def test_forget_invalid_or_absent_fingerprint_has_no_audit_or_mutation(tmp_path,
     service.close()
 
 
-def test_forget_trust_write_failure_has_no_completion_record(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
-    remote_identity = load_identity(tmp_path / "remote")
+def test_forget_trust_write_failure_has_no_completion_record(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
+    remote_identity = load_identity(tmp_path / "remote", credential_provider=credential_provider)
     service._trust.pin(remote_identity.public_bytes, Endpoint("192.0.2.37", 47655))
     fingerprint = remote_identity.fingerprint
     records = []
@@ -525,9 +526,9 @@ def test_forget_trust_write_failure_has_no_completion_record(tmp_path, monkeypat
     service.close()
 
 
-def test_forget_barrier_serializes_networking_and_second_forget(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
-    remote_identity = load_identity(tmp_path / "remote")
+def test_forget_barrier_serializes_networking_and_second_forget(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
+    remote_identity = load_identity(tmp_path / "remote", credential_provider=credential_provider)
     endpoint = Endpoint("192.0.2.33", 47655)
     service._trust.pin(remote_identity.public_bytes, endpoint)
     fingerprint = remote_identity.fingerprint
@@ -604,9 +605,9 @@ def test_forget_barrier_serializes_networking_and_second_forget(tmp_path, monkey
     assert service.trusted_peers() == []
 
 
-def test_close_before_forget_mutation_cancels_removal(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
-    remote_identity = load_identity(tmp_path / "remote")
+def test_close_before_forget_mutation_cancels_removal(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
+    remote_identity = load_identity(tmp_path / "remote", credential_provider=credential_provider)
     service._trust.pin(remote_identity.public_bytes, Endpoint("192.0.2.34", 47655))
     fingerprint = remote_identity.fingerprint
     entered, release = threading.Event(), threading.Event()
@@ -647,9 +648,9 @@ def test_close_before_forget_mutation_cancels_removal(tmp_path, monkeypatch):
     ]
 
 
-def test_close_after_forget_mutation_starts_finishes_and_audits(tmp_path, monkeypatch):
-    service = PeerService(tmp_path)
-    remote_identity = load_identity(tmp_path / "remote")
+def test_close_after_forget_mutation_starts_finishes_and_audits(tmp_path, monkeypatch, credential_provider):
+    service = PeerService(tmp_path, credential_provider=credential_provider)
+    remote_identity = load_identity(tmp_path / "remote", credential_provider=credential_provider)
     service._trust.pin(remote_identity.public_bytes, Endpoint("192.0.2.35", 47655))
     fingerprint = remote_identity.fingerprint
     entered, release = threading.Event(), threading.Event()

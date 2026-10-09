@@ -27,6 +27,8 @@
 
 ### Security
 
+- Encrypt persistent Ed25519 identities with a bounded Argon2id/Fernet format and preserve the exact key during legacy migration. Add explicit masked startup credentials, read-only public diagnostics and private bounded simulation credential delivery. Windows compatibility was withdrawn from demo requirements on 2026-10-09; Linux verification is complete, while macOS demo support and native validation are tracked separately.
+
 - Shared limits reject invalid policy values at construction.
 - Restrict existing Linux private stores on load and block trust operations after persistence failure.
 

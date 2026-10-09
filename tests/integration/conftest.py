@@ -58,10 +58,14 @@ class PeerPair:
 
 
 @pytest.fixture
-def peer_pair(tmp_path, request):
+def peer_pair(tmp_path, request, credential_provider):
     limits = getattr(request, "param", Limits())
-    alice = PeerService(tmp_path / "alice", limits)
-    bob = PeerService(tmp_path / "bob", limits)
+    alice = PeerService(
+        tmp_path / "alice", limits, credential_provider=credential_provider
+    )
+    bob = PeerService(
+        tmp_path / "bob", limits, credential_provider=credential_provider
+    )
     alice_endpoint = alice.start_listener("127.0.0.1", 0)
     bob_endpoint = bob.start_listener("127.0.0.1", 0)
     try:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import builtins
-from pathlib import Path
 
 from sparc.__main__ import main
 from sparc.storage import resolve_data_dir
@@ -35,11 +34,13 @@ def test_default_launch_wires_three_core_tabs(tmp_path, monkeypatch):
             calls.append(("root.destroy",))
 
     class FakeService:
-        def __init__(self, data_dir):
-            calls.append(("service", Path(data_dir)))
-
         def close(self):
             calls.append(("service.close",))
+
+        @classmethod
+        def _from_unlocked_store(cls, handle):
+            calls.append(("service", handle))
+            return cls()
 
     class FakeTab:
         def __init__(self, name):
@@ -65,6 +66,13 @@ def test_default_launch_wires_three_core_tabs(tmp_path, monkeypatch):
             calls.append(("app.close",))
 
     monkeypatch.setattr(tkinter, "Tk", FakeRoot)
+    handle = object()
+
+    def unlock(_root, _data_dir):
+        calls.append(("unlock_success",))
+        return handle
+
+    monkeypatch.setattr(app_module, "unlock_identity_for_gui", unlock, raising=False)
     monkeypatch.setattr(app_module, "PeerService", FakeService, raising=False)
     monkeypatch.setattr(app_module, "SparcApp", FakeApp, raising=False)
     monkeypatch.setattr(app_module, "ConnectionTab", lambda *_: FakeTab("Connection"), raising=False)
@@ -77,7 +85,9 @@ def test_default_launch_wires_three_core_tabs(tmp_path, monkeypatch):
     assert result == 0
     assert {"Connection", "Chat", "Audit"}.issubset(names)
     assert ("mainloop",) in calls
-    assert ("service", resolve_data_dir(tmp_path)) in calls
+    assert calls.index(("unlock_success",)) < calls.index(("service", handle))
+    assert calls.index(("service", handle)) < calls.index(("tab", "Connection"))
+    assert sum(call[0] == "service" for call in calls) == 1
 
 
 def test_missing_tk_is_actionable_without_traceback(tmp_path, monkeypatch, capsys):
@@ -96,6 +106,7 @@ def test_missing_tk_is_actionable_without_traceback(tmp_path, monkeypatch, capsy
 
 
 def test_check_remains_usable_without_tk_or_tshark(tmp_path, monkeypatch, capsys):
+    data_dir = tmp_path / "diagnostic"
     real_import = builtins.__import__
 
     def reject_gui_and_tshark(name, *args, **kwargs):
@@ -104,11 +115,31 @@ def test_check_remains_usable_without_tk_or_tshark(tmp_path, monkeypatch, capsys
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", reject_gui_and_tshark)
-    result = main(["--check", "--data-dir", str(tmp_path)])
+    result = main(["--check", "--data-dir", str(data_dir)])
     captured = capsys.readouterr()
     assert result == 0
     assert "SPARC:" in captured.out
     assert "Public fingerprint:" in captured.out
+    assert not data_dir.exists()
+
+
+def test_gui_unlock_cancel_maps_to_interrupt_exit_without_traceback(
+    tmp_path, monkeypatch, capsys
+):
+    import sparc.gui.app as app_module
+    from sparc.models import SparcError
+
+    def canceled(_data_dir):
+        raise SparcError("identity_unlock_cancelled", "private cancellation detail")
+
+    monkeypatch.setattr(app_module, "launch", canceled, raising=False)
+    result = main(["--data-dir", str(tmp_path)])
+    captured = capsys.readouterr()
+
+    assert result == 130
+    assert "SPARC launch canceled." in captured.err
+    assert "Traceback" not in captured.err
+    assert "private cancellation detail" not in captured.err
 
 
 def test_launch_setup_failure_closes_service_and_root(tmp_path, monkeypatch):
@@ -134,17 +165,25 @@ def test_launch_setup_failure_closes_service_and_root(tmp_path, monkeypatch):
             calls.append("root.destroy")
 
     class FakeService:
-        def __init__(self, _data_dir):
-            pass
-
         def close(self):
             calls.append("service.close")
+
+        @classmethod
+        def _from_unlocked_store(cls, _handle):
+            calls.append("service")
+            return cls()
 
     class BrokenApp:
         def __init__(self, *_args):
             raise RuntimeError("injected app setup failure")
 
     monkeypatch.setattr(tkinter, "Tk", FakeRoot)
+    monkeypatch.setattr(
+        app_module,
+        "unlock_identity_for_gui",
+        lambda _root, _data_dir: (calls.append("unlock_success") or object()),
+        raising=False,
+    )
     monkeypatch.setattr(app_module, "PeerService", FakeService, raising=False)
     monkeypatch.setattr(app_module, "SparcApp", BrokenApp, raising=False)
 
@@ -154,4 +193,46 @@ def test_launch_setup_failure_closes_service_and_root(tmp_path, monkeypatch):
         assert "injected app setup failure" in str(exc)
     else:
         raise AssertionError("launch should propagate its setup failure")
-    assert calls == ["service.close", "root.destroy"]
+    assert calls == ["unlock_success", "service", "service.close", "root.destroy"]
+
+
+def test_canceled_unlock_never_constructs_service(tmp_path, monkeypatch):
+    import sparc.gui.app as app_module
+    import tkinter
+    from sparc.models import SparcError
+
+    calls = []
+
+    class FakeRoot:
+        def title(self, _value):
+            pass
+
+        def geometry(self, _value):
+            pass
+
+        def minsize(self, *_value):
+            pass
+
+        def destroy(self):
+            calls.append("root.destroy")
+
+    class FakeService:
+        @classmethod
+        def _from_unlocked_store(cls, _handle):
+            calls.append("service")
+            return cls()
+
+    def canceled(_root, _data_dir):
+        raise SparcError("identity_unlock_cancelled", "canceled by test")
+
+    monkeypatch.setattr(tkinter, "Tk", FakeRoot)
+    monkeypatch.setattr(app_module, "unlock_identity_for_gui", canceled, raising=False)
+    monkeypatch.setattr(app_module, "PeerService", FakeService, raising=False)
+
+    try:
+        app_module.launch(resolve_data_dir(tmp_path))
+    except SparcError as error:
+        assert error.code == "identity_unlock_cancelled"
+    else:
+        raise AssertionError("canceled unlock must stop launch")
+    assert calls == ["root.destroy"]

@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from sparc.identity import TrustStore
+from sparc.identity import TrustStore, load_identity
 from sparc.models import Endpoint, SparcError
 from sparc.peer.service import PeerService
 
@@ -65,8 +65,8 @@ def _connect_when_idle(service, endpoint, timeout=2.0):
             time.sleep(0.01)
 
 
-def _start_responder(tmp_path, name="responder"):
-    service = PeerService(tmp_path / name)
+def _start_responder(tmp_path, name="responder", *, credential_provider):
+    service = PeerService(tmp_path / name, credential_provider=credential_provider)
     endpoint = service.start_listener("127.0.0.1", 0)
     return service, endpoint
 
@@ -80,10 +80,10 @@ def _audit_events(service):
 
 
 def test_both_unknown_peers_approve_exact_fingerprints_and_commit_before_adoption(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, credential_provider
 ):
-    responder, endpoint = _start_responder(tmp_path)
-    initiator = PeerService(tmp_path / "initiator")
+    responder, endpoint = _start_responder(tmp_path, credential_provider=credential_provider)
+    initiator = PeerService(tmp_path / "initiator", credential_provider=credential_provider)
     try:
         pin_calls = []
         original_pin = initiator._trust.pin
@@ -140,9 +140,9 @@ def test_both_unknown_peers_approve_exact_fingerprints_and_commit_before_adoptio
         responder.close()
 
 
-def test_stale_pairing_response_cannot_approve_new_session(tmp_path):
-    responder, endpoint = _start_responder(tmp_path)
-    initiator = PeerService(tmp_path / "initiator")
+def test_stale_pairing_response_cannot_approve_new_session(tmp_path, credential_provider):
+    responder, endpoint = _start_responder(tmp_path, credential_provider=credential_provider)
+    initiator = PeerService(tmp_path / "initiator", credential_provider=credential_provider)
     try:
         initiator.connect(endpoint)
         request_a = _wait_pairing(initiator)
@@ -170,9 +170,9 @@ def test_stale_pairing_response_cannot_approve_new_session(tmp_path):
         responder.close()
 
 
-def test_failed_handshake_or_audit_never_connects_or_pins(tmp_path, monkeypatch):
-    responder, endpoint = _start_responder(tmp_path)
-    initiator = PeerService(tmp_path / "initiator")
+def test_failed_handshake_or_audit_never_connects_or_pins(tmp_path, monkeypatch, credential_provider):
+    responder, endpoint = _start_responder(tmp_path, credential_provider=credential_provider)
+    initiator = PeerService(tmp_path / "initiator", credential_provider=credential_provider)
     try:
         def fail_audit(_kind, _metadata):
             raise SparcError("audit_storage_failed", "injected durable audit failure")
@@ -193,9 +193,9 @@ def test_failed_handshake_or_audit_never_connects_or_pins(tmp_path, monkeypatch)
         responder.close()
 
 
-def test_failed_trust_pin_never_connects(tmp_path, monkeypatch):
-    responder, endpoint = _start_responder(tmp_path)
-    initiator = PeerService(tmp_path / "initiator")
+def test_failed_trust_pin_never_connects(tmp_path, monkeypatch, credential_provider):
+    responder, endpoint = _start_responder(tmp_path, credential_provider=credential_provider)
+    initiator = PeerService(tmp_path / "initiator", credential_provider=credential_provider)
     try:
         def fail_pin(_public_key, _endpoint, label=""):
             raise SparcError("trust_write_failed", "injected trust persistence failure")
@@ -215,9 +215,9 @@ def test_failed_trust_pin_never_connects(tmp_path, monkeypatch):
         responder.close()
 
 
-def test_post_pin_trust_audit_failure_keeps_pin_without_adoption(tmp_path, monkeypatch):
-    responder, endpoint = _start_responder(tmp_path)
-    initiator = PeerService(tmp_path / "initiator")
+def test_post_pin_trust_audit_failure_keeps_pin_without_adoption(tmp_path, monkeypatch, credential_provider):
+    responder, endpoint = _start_responder(tmp_path, credential_provider=credential_provider)
+    initiator = PeerService(tmp_path / "initiator", credential_provider=credential_provider)
     original_append = initiator._audit.append
     original_pin = initiator._trust.pin
     pin_completed = threading.Event()
@@ -254,11 +254,12 @@ def test_post_pin_trust_audit_failure_keeps_pin_without_adoption(tmp_path, monke
         responder.close()
 
 
-def test_known_peer_skips_prompt_and_changed_peer_blocks_before_prompt(tmp_path):
-    responder, endpoint = _start_responder(tmp_path, "responder-known")
+def test_known_peer_skips_prompt_and_changed_peer_blocks_before_prompt(tmp_path, credential_provider):
+    responder, endpoint = _start_responder(tmp_path, "responder-known", credential_provider=credential_provider)
     initiator_dir = tmp_path / "initiator-known"
+    load_identity(initiator_dir, credential_provider=credential_provider)
     TrustStore(initiator_dir).pin(responder._identity.public_bytes, endpoint, label="remembered")
-    initiator = PeerService(initiator_dir)
+    initiator = PeerService(initiator_dir, credential_provider=credential_provider)
     try:
         initiator.connect(endpoint)
         responder_request = _wait_pairing(responder)
@@ -273,11 +274,12 @@ def test_known_peer_skips_prompt_and_changed_peer_blocks_before_prompt(tmp_path)
         initiator.close()
         responder.close()
 
-    changed_responder, changed_endpoint = _start_responder(tmp_path, "responder-changed")
+    changed_responder, changed_endpoint = _start_responder(tmp_path, "responder-changed", credential_provider=credential_provider)
     changed_dir = tmp_path / "initiator-changed"
+    load_identity(changed_dir, credential_provider=credential_provider)
     remembered_key = b"R" * 32
     TrustStore(changed_dir).pin(remembered_key, changed_endpoint)
-    changed = PeerService(changed_dir)
+    changed = PeerService(changed_dir, credential_provider=credential_provider)
     try:
         changed.connect(changed_endpoint)
         _wait_state(changed, "error")
@@ -291,9 +293,9 @@ def test_known_peer_skips_prompt_and_changed_peer_blocks_before_prompt(tmp_path)
         changed_responder.close()
 
 
-def test_canceled_pairing_prompt_never_begins_trust_commit(tmp_path):
-    responder, endpoint = _start_responder(tmp_path)
-    initiator = PeerService(tmp_path / "initiator")
+def test_canceled_pairing_prompt_never_begins_trust_commit(tmp_path, credential_provider):
+    responder, endpoint = _start_responder(tmp_path, credential_provider=credential_provider)
+    initiator = PeerService(tmp_path / "initiator", credential_provider=credential_provider)
     try:
         initiator.connect(endpoint)
         request = _wait_pairing(initiator)
@@ -311,9 +313,9 @@ def test_canceled_pairing_prompt_never_begins_trust_commit(tmp_path):
         responder.close()
 
 
-def test_cancel_during_pin_completion_never_adopts_session(tmp_path):
-    responder, endpoint = _start_responder(tmp_path)
-    initiator = PeerService(tmp_path / "initiator")
+def test_cancel_during_pin_completion_never_adopts_session(tmp_path, credential_provider):
+    responder, endpoint = _start_responder(tmp_path, credential_provider=credential_provider)
+    initiator = PeerService(tmp_path / "initiator", credential_provider=credential_provider)
     entered_pin = threading.Event()
     release_pin = threading.Event()
     close_done = threading.Event()
