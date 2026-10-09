@@ -17,7 +17,7 @@ commits exist.
 | C7 GUI | C7a-C7e | verified |
 | C8 Demonstration and baseline | C8a-C8c | verified |
 | A1 Sensitivity analysis | A1a-A1c | verified |
-| A2 Local benchmarks and exports | A2a-A2e | pending |
+| A2 Local benchmarks and exports | A2a-A2e | verified |
 | A3 Network and resource analysis | A3a-A3d | pending |
 | T1 Capture normalization | T1a-T1d | pending |
 | T2 Traffic indexing and exports | T2a-T2d | pending |
@@ -64,14 +64,14 @@ commits exist.
 | C8a | verified | Independent-process simulation; fresh core gate 526 passed in 95.93s; Sol fixes/re-review passed; actual retained evidence under .demo/c8-evidence | d1189c3 |
 | C8b | verified | Separate lab-only baseline; simulation/baseline focused 40 passed in 7.20s; secure runtime remains isolated | d1189c3 |
 | C8c | verified | All five goals and thirteen criteria mapped; copy-only audit/tamper example executed; links and bounded demo recipes checked | d1189c3 |
-| A1a | verified | A1 gate 62 passed; Sol review large-seed fix verified RED to GREEN | uncommitted |
-| A1b | verified | A1 gate 62 passed; Sol review large-seed fix verified RED to GREEN | uncommitted |
-| A1c | verified | A1 gate 62 passed; Sol review large-seed fix verified RED to GREEN | uncommitted |
-| A2a | pending | Pending | pending |
-| A2b | pending | Pending | pending |
-| A2c | pending | Pending | pending |
-| A2d | pending | Pending | pending |
-| A2e | pending | Pending | pending |
+| A1a | verified | A1 gate 62 passed; Sol review large-seed fix verified RED to GREEN | 1cc050a |
+| A1b | verified | A1 gate 62 passed; Sol review large-seed fix verified RED to GREEN | 1cc050a |
+| A1c | verified | A1 gate 62 passed; Sol review large-seed fix verified RED to GREEN | 1cc050a |
+| A2a | verified | A2 focused gate: 47 passed in 2.11s; default CLI raw-summary reconstruction passed; Sol milestone review passed | uncommitted |
+| A2b | verified | A2 focused gate: 47 passed in 2.11s; default CLI raw-summary reconstruction passed; Sol milestone review passed | uncommitted |
+| A2c | verified | A2 focused gate: 47 passed in 2.11s; default CLI raw-summary reconstruction passed; Sol milestone review passed | uncommitted |
+| A2d | verified | A2 focused gate: 47 passed in 2.11s; default CLI raw-summary reconstruction passed; Sol milestone review passed | uncommitted |
+| A2e | verified | A2 focused gate: 47 passed in 2.11s; default CLI raw-summary reconstruction passed; Sol milestone review passed | uncommitted |
 | A3a | pending | Pending | pending |
 | A3b | pending | Pending | pending |
 | A3c | pending | Pending | pending |
@@ -95,3 +95,5 @@ C1-C6 Sol spec/quality reviews passed. C7 controller gate: 540 passed in 95.55s 
 C8 controller gate: 526 unit/integration tests passed in 95.93s without warnings on the corrected runtime. Simulation/baseline focus: 40 passed in 7.20s. Sol scoped re-review passed after terminal-state barrier and nonzero child-exit corrections. Actual local independent-process report and separately retained public audit evidence are under `.demo/c8-evidence/`; copy-only tail-removal/signature-tamper checks passed. Physical devices, Windows, packet captures, and analysis measurements remain unverified/pending.
 
 A1: reproducible public AES laboratory verified; 62 sensitivity tests passed. Sol reviewed formulas, baseline-once, cancellation and schema; arbitrary-size seed regression fixed with local decimal chunks. A2a statistics: 15 passed. A2/A3 remain in progress/pending; no new physical-device evidence.
+
+A2 resumed on 2026-10-09: 47 focused tests passed in 2.11s. Huge decimal CLI seed regression fixed with local bounded parsing (RED: 2 failed/45 passed; GREEN: 47 passed). Real default sensitivity and local benchmark commands completed; independent reconstruction verified 19,200 lab trials (6,400 plaintext/12,800 key), 18,000 local timings, and all 24 summaries. Ignored artifacts: `.demo/a2-evidence/lab/`, `local-benchmark.csv`, `reconstruction.json`. Sol milestone spec/quality review passed with no findings (`.superpowers/a2-review.md`). These are synthetic local measurements; physical-device evidence remains pending.

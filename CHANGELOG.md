@@ -4,6 +4,8 @@
 
 ### Added
 
+- Local six-operation cryptographic benchmarks, isolated signature specimens, and standalone analysis commands with reproducible raw/summary CSV exports.
+
 - Reproducible synthetic AES-256 sensitivity trials and bounded 50-case batches with separate bit, byte and hexadecimal metrics and cancellable partial results.
 
 - Initial SPARC package structure and shared immutable model records.
