@@ -36,7 +36,9 @@ class AuditTab:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(5, weight=1)
         ttk.Label(frame, textvariable=self._status).grid(row=0, column=0, sticky="w")
-        self._head_label = ttk.Label(frame, textvariable=self._head_text, wraplength=850)
+        self._head_label = ttk.Label(
+            frame, textvariable=self._head_text, wraplength=850, justify=tk.LEFT
+        )
         self._head_label.grid(
             row=1, column=0, sticky="ew", pady=(4, 8)
         )
@@ -164,10 +166,10 @@ class AuditTab:
         if operation == "head" and isinstance(value, dict):
             self._head = dict(value)
             self._head_text.set(
-                "Durable writer head (not a verification result): "
-                f"record {value.get('last_record_number')} · "
-                f"hash {value.get('last_record_hash')} · "
-                f"log {value.get('log_id')}"
+                "Durable writer head (not a verification result):\n"
+                f"Record: {value.get('last_record_number')}\n"
+                f"Hash: {value.get('last_record_hash')}\n"
+                f"Log ID: {value.get('log_id')}"
             )
             self._status.set("Durable writer head loaded")
         elif operation == "verify" and isinstance(value, AuditReport):
