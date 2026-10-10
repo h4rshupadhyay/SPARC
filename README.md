@@ -114,6 +114,17 @@ generation on outgoing messages and verification on incoming messages, in
 microseconds. Missing timings are labeled unavailable. These are local
 operation durations; sender timings are not transmitted to the receiver.
 
+History rows show the local message time; the inspector includes the full date,
+timezone, and UTC offset. The timestamp is recorded when you submit an outgoing
+message or the app first handles an incoming message, and stays unchanged by
+delivery updates. These timestamps use the local device clock.
+
+The inspector groups message metadata, timings, and hash results. Expand
+**Show cryptographic details** to see the complete hashes, signature, nonce,
+tag, and ciphertext. **Copy value** copies a selected complete value, including
+values abbreviated in the summary. Receiver hashes missing from an outgoing
+inspection are labeled **not available locally**.
+
 ## Standalone analysis
 
 Run synthetic sensitivity trials and local benchmarks without a connected peer

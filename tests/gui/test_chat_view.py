@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
+import gc
 import queue
 import threading
 import time
@@ -47,6 +49,9 @@ class FakeService:
 
 
 def _make_tab(service=None):
+    # Release destroyed Tk views on the main thread before a send worker can
+    # trigger cyclic collection, matching the analysis-view test fixture.
+    gc.collect()
     root, notebook = _root_or_skip()
     service = service or FakeService()
     tab = ChatTab(notebook, service)
@@ -86,6 +91,13 @@ def _send_button(tab):
     return next(
         child for child in _walk(tab.widget)
         if isinstance(child, ttk.Button) and str(child.cget("text")).strip().lower() == "send"
+    )
+
+
+def _crypto_toggle(tab):
+    return next(
+        child for child in _walk(tab.widget)
+        if isinstance(child, ttk.Button) and "cryptographic details" in str(child.cget("text")).lower()
     )
 
 
@@ -204,6 +216,7 @@ def test_inspector_shows_hash_match_signature_ciphertext_and_microseconds():
         "direction": 1,
         "sequence": 7,
     }))
+    _crypto_toggle(tab).invoke()
     visible = _visible(tab.widget)
     assert text in visible
     assert "a" * 64 in visible
@@ -398,7 +411,7 @@ def test_history_identity_includes_origin_and_message_id():
 def test_chat_inspector_timings_precede_long_ciphertext_and_scrollbar_reaches_it():
     root, tab, _service = _make_tab()
     tab.widget.master.pack_configure(fill="both", expand=True)
-    root.geometry("800x600")
+    root.geometry("800x640")
     root.deiconify()
     root.update()
     detail = Inspection(
@@ -422,6 +435,7 @@ def test_chat_inspector_timings_precede_long_ciphertext_and_scrollbar_reaches_it
         "sequence": None,
         "origin": "incoming",
     }))
+    _crypto_toggle(tab).invoke()
     root.update()
     inspector = tab._inspector
     scrollbars = [child for child in _walk(tab.widget)
@@ -434,7 +448,9 @@ def test_chat_inspector_timings_precede_long_ciphertext_and_scrollbar_reaches_it
     inspector.yview_moveto(0.0)
     top = inspector.yview()
     first_visible = inspector.get("@0,0", f"@0,{max(0, inspector.winfo_height() - 3)}")
-    assert "Signature verification: 5.5 µs" in first_visible
+    assert "security details" in first_visible
+    detail_text = inspector.get("1.0", "end-1c")
+    assert detail_text.index("Signature verification: 5.5 µs") < detail_text.index("Ciphertext")
     inspector.yview_moveto(1.0)
     root.update()
     bottom = inspector.yview()
@@ -459,6 +475,7 @@ def test_chat_labels_local_signature_timings_by_message_origin(origin, timings, 
     try:
         inspection = replace(_inspection(), timings=timings)
         tab.handle_event(_message("1" * 32, "message", inspection, origin=origin))
+        _crypto_toggle(tab).invoke()
         text = tab._inspector.get("1.0", "end-1c")
         assert expected in text
         assert absent not in text
@@ -527,3 +544,73 @@ def test_benchmark_progress_does_not_create_chat_entry():
     assert "benchmark" not in visible.lower()
     tab.close()
     root.destroy()
+
+
+@pytest.mark.parametrize("origin", ["incoming", "outgoing"])
+def test_local_timestamp_survives_duplicate_events_delivery_and_reselection(monkeypatch, origin):
+    class Clock(datetime):
+        current = None
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+
+        def astimezone(self, tz=None):
+            return self
+
+    local_zone = timezone(timedelta(hours=5, minutes=30), "IST")
+    Clock.current = Clock(2026, 10, 10, 12, 34, 56, tzinfo=local_zone)
+    monkeypatch.setattr("sparc.gui.chat.datetime", Clock, raising=False)
+    root, tab, _ = _make_tab()
+    try:
+        original = _message("1" * 32, "first message", _inspection(), origin=origin)
+        tab.handle_event(original)
+        assert "2026-10-10 12:34:56 IST (UTC+05:30)" in _visible(tab.widget)
+        assert "12:34:56" in tab._history.get(0)
+
+        Clock.current = Clock(2026, 10, 10, 13, 45, 0, tzinfo=local_zone)
+        tab.handle_event(original)
+        tab.handle_event(ServiceEvent("delivery", {"message_id": "1" * 32}))
+        tab.handle_event(_message("2" * 32, "second message", origin=origin))
+        tab._history.selection_clear(0, tk.END)
+        tab._history.selection_set(1)
+        tab._selection_changed()
+        assert "2026-10-10 13:45:00 IST (UTC+05:30)" in tab._inspector.get("1.0", "end-1c")
+        tab._history.selection_clear(0, tk.END)
+        tab._history.selection_set(0)
+        tab._selection_changed()
+        detail = tab._inspector.get("1.0", "end-1c")
+        assert "2026-10-10 12:34:56 IST (UTC+05:30)" in detail
+        assert "13:45:00" not in detail
+    finally:
+        tab.close()
+        root.destroy()
+
+
+def test_crypto_details_collapse_and_copy_complete_current_values():
+    root, tab, _ = _make_tab()
+    try:
+        first = replace(_inspection(), ciphertext=b"c" * 2048, computed_sha256=None)
+        tab.handle_event(_message("1" * 32, "first", first, origin="outgoing"))
+        encoded = base64.b64encode(first.ciphertext).decode("ascii")
+        assert encoded not in tab._inspector.get("1.0", "end-1c")
+        _crypto_toggle(tab).invoke()
+        assert encoded in tab._inspector.get("1.0", "end-1c")
+        tab._copy_menu.invoke("Sender SHA-256")
+        assert root.clipboard_get() == "a" * 64
+        tab._copy_menu.invoke("Ciphertext")
+        assert root.clipboard_get() == encoded
+        tab._copy_menu.invoke("Receiver SHA-256")
+        assert root.clipboard_get() == encoded
+
+        tab.handle_event(_message("2" * 32, "second", _inspection("2" * 32)))
+        tab._history.selection_clear(0, tk.END)
+        tab._history.selection_set(1)
+        tab._selection_changed()
+        tab._copy_menu.invoke("Ciphertext")
+        assert root.clipboard_get() == "AQID"
+        _crypto_toggle(tab).invoke()
+        assert "Ciphertext (base64)" not in tab._inspector.get("1.0", "end-1c")
+    finally:
+        tab.close()
+        root.destroy()
