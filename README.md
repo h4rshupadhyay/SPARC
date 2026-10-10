@@ -145,13 +145,17 @@ second-preimage resistance, a seed, and an attempt limit.
 All searches compare complete 256-bit SHA-256 digests. Results show attempts,
 elapsed time, and any matching synthetic inputs
 with their full digests. **Cancel** retains incomplete hashing results;
-**Save CSV…** exports the result and its scope. No match is expected in these
-finite searches; it does not establish SHA-256 security. Definitions
+**Save CSV…** exports the result and its scope. Definitions
 follow [NIST's hash-function guidance](https://csrc.nist.gov/Projects/hash-functions).
 
 **Generate specimen** also displays Ed25519 signature generation time, excluding
 key generation and encoding. Local benchmark signature rows display
 microseconds; CSV timing fields retain nanoseconds.
+
+Benchmark tables show one median duration per workload and operation, with
+sample counts and p95 for context. Local rates show primitive throughput and
+synthetic ASCII characters per second; network goodput uses confirmed receipts.
+**Save CSV…** retains every measured sample plus mean, median, p95, and rates.
 
 ## Demonstrations and evidence
 
