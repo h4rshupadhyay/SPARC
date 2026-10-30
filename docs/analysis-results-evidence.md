@@ -35,3 +35,7 @@ The user approved the preceding graphical-analysis audit recommendation. Impleme
 - `test_traffic_exports.py::test_source_destination_alias_is_rejected_before_process` (3 cases)
 
 Solo review covered missing/partial runs, operation filtering, per-category retention, chart/export provenance, numeric axes, histogram normalization, output-bit indexing, large seeds, Tk closure and CSV ownership. The full suite is not green; this branch has not been merged or pushed.
+
+## Refreshed two-peer demo
+
+The native demo was reopened with temporary encrypted identities and both authenticated localhost peers connected. Alice displays a measured local benchmark (2 warmups, 100 repetitions); Bob displays the measured two-case avalanche histogram. Both Results views are visible side by side in `.demo/results-view-evidence/06-two-peers.png`. `.demo/two-peer-session.json` reports both peers connected and `analysis_results_ready: true`; the session log has no error. Final post-commit focused verification: **40 passed in 7.68 s**.
