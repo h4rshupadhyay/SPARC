@@ -1,0 +1,20 @@
+{
+  "format": "sparc-public-analysis",
+  "version": 1,
+  "kind": "sensitivity_trial",
+  "data": {
+    "case_index": 0,
+    "mode": "plaintext",
+    "bit_index": 0,
+    "block": "30313233343536373839616263646566",
+    "modified_block": "b0313233343536373839616263646566",
+    "baseline_ciphertext": "b8c3331ada9c9e93b35ce601c0340dad",
+    "modified_ciphertext": "09c43926d5753d92aca4c9eef9a6e916",
+    "difference": {
+      "bit_percent": 51.5625,
+      "byte_percent": 100.0,
+      "hex_percent": 87.5
+    },
+    "input_source": "custom"
+  }
+}

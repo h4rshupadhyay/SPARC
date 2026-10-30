@@ -14,6 +14,8 @@ from ..traffic.pdml import export_xml
 from ..traffic.sqlite_index import analyze_capture, import_sqlite
 from .appearance import install
 from .jobs import JobController
+from .plot_view import PlotView
+from ..analysis.plots import Plot,Series
 
 
 _ERRORS = {
@@ -63,6 +65,8 @@ class TrafficTab:
 
     def _build(self) -> None:
         frame = self.widget
+        style=ttk.Style(frame)
+        style.configure('TrafficPath.TButton',padding=(12,4))
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(6, weight=1)
         ttk.Label(frame, text="Offline traffic", style="Title.TLabel").grid(row=0, column=0, sticky="w")
@@ -72,32 +76,41 @@ class TrafficTab:
         paths = ttk.Frame(frame)
         paths.grid(row=2, column=0, sticky="ew")
         paths.columnconfigure(1, weight=1)
-        self._open_button = ttk.Button(paths, text="Open Capture", command=self._open_capture)
+        self._open_button = ttk.Button(paths, text="Open Capture", command=self._open_capture,style='TrafficPath.TButton')
         self._open_button.grid(row=0, column=0, sticky="w", padx=(0, 10))
         ttk.Entry(paths, textvariable=self._source_text, state="readonly", width=1,
                   font=self._appearance.small).grid(row=0, column=1, sticky="ew")
-        self._tool_button = ttk.Button(paths, text="Choose TShark", command=self._choose_tool)
+        self._tool_button = ttk.Button(paths, text="Choose TShark", command=self._choose_tool,style='TrafficPath.TButton')
         self._tool_button.grid(row=1, column=0, sticky="w", padx=(0, 10), pady=(6, 0))
         ttk.Entry(paths, textvariable=self._tool_text, state="readonly", width=1,
                   font=self._appearance.small).grid(row=1, column=1, sticky="ew", pady=(6, 0))
         filters = ttk.Frame(frame)
-        filters.grid(row=3, column=0, sticky="ew", pady=8)
+        filters.grid(row=3, column=0, sticky="ew", pady=6)
         filters.columnconfigure(1, weight=1)
         ttk.Label(filters, text="Index display filter (optional)").grid(row=0, column=0, padx=(0, 10))
         self._filter_entry = ttk.Entry(filters, textvariable=self._filter)
         self._filter_entry.grid(row=0, column=1, sticky="ew")
-        ttk.Label(frame, text="XML export is always unfiltered. Retransmissions are dissector indications, not loss or attack proof.",
-                  wraplength=720, style="Muted.TLabel").grid(row=4, column=0, sticky="ew")
+        scope=ttk.Label(frame, text="XML export is always unfiltered. Retransmissions are dissector indications, not loss or attack proof.",
+                  wraplength=720, style="Muted.TLabel")
+        scope.grid(row=4,column=0,sticky='ew')
         actions = ttk.Frame(frame)
-        actions.grid(row=5, column=0, sticky="ew", pady=8)
+        actions.grid(row=5, column=0, sticky="ew", pady=3)
         self._analyze_button = ttk.Button(actions, text="Analyze", command=lambda: self._start("analyze"))
         self._sqlite_button = ttk.Button(actions, text="Export SQLite", command=lambda: self._start("sqlite"))
         self._xml_button = ttk.Button(actions, text="Export XML (unfiltered)", command=lambda: self._start("xml"))
         self._cancel_button = ttk.Button(actions, text="Cancel", command=self._cancel)
         for button in (self._analyze_button, self._sqlite_button, self._xml_button, self._cancel_button):
             button.pack(side="left", padx=(0, 8))
-        table_frame = ttk.Frame(frame)
-        table_frame.grid(row=6, column=0, sticky="nsew")
+        style.configure('TrafficResults.TNotebook.Tab',font=self._appearance.small,padding=(10,3))
+        style.map('TrafficResults.TNotebook.Tab',padding=[('selected',(10,3)),('!selected',(10,3))])
+        self._results_tabs=ttk.Notebook(frame,style='TrafficResults.TNotebook')
+        self._results_tabs.grid(row=6,column=0,sticky='nsew')
+        table_frame = ttk.Frame(self._results_tabs)
+        self._results_tabs.add(table_frame,text='Summary')
+        self._rate_plot=PlotView(self._results_tabs)
+        self._results_tabs.add(self._rate_plot,text='Capture rate')
+        self._capture_controls=(paths,filters,scope,actions)
+        self._results_tabs.bind('<<NotebookTabChanged>>',self._results_selected)
         table_frame.columnconfigure(0, weight=1)
         table_frame.rowconfigure(0, weight=1)
         self._table = ttk.Treeview(table_frame, columns=("value",), show="tree headings", selectmode="browse")
@@ -111,7 +124,14 @@ class TrafficTab:
         xscroll = ttk.Scrollbar(table_frame, orient="horizontal", command=self._table.xview)
         xscroll.grid(row=1, column=0, sticky="ew")
         self._table.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
-        ttk.Label(frame, textvariable=self._status, wraplength=720).grid(row=7, column=0, sticky="ew", pady=(10, 0))
+        ttk.Label(frame, textvariable=self._status, wraplength=720).grid(row=7, column=0, sticky="ew", pady=(6, 0))
+
+    def _results_selected(self,_event=None):
+        graph=self._results_tabs.select()==str(self._rate_plot)
+        for control in self._capture_controls:
+            control.grid_remove() if graph else control.grid()
+        if graph or self._source is not None: self._intro_label.grid_remove()
+        else: self._intro_label.grid()
 
     def _refresh_controls(self) -> None:
         if self._closed:
@@ -126,6 +146,7 @@ class TrafficTab:
         self._generation += 1
         self._last_report = None
         self._table.delete(*self._table.get_children())
+        self._rate_plot.show_plots([],'Analyze a capture to see timestamped byte bins.')
         self._status.set("Selection changed; analyze to create a new result")
 
     def _select_source(self, source: Path) -> None:
@@ -312,6 +333,18 @@ class TrafficTab:
         for key, value in report.metadata.get("definitions", {}).items():
             self._row(key, value, parent)
         self._show_conversion(report.conversion)
+        bins=report.metadata.get('capture_rate_bins',{})
+        if bins.get('available'):
+            width=float(bins['width_s'])
+            points=tuple((float(offset)+width/2,float(value)) for offset,value in zip(bins['offsets_s'],bins['bytes_s']))
+            end=width*len(points)
+            plot=Plot('Captured traffic by time bin','Seconds from first epoch-aligned bin',
+                'Captured bytes / nominal bin (B/s)',(Series('Captured frame bytes',points,'#1d4ed8',connected=False,bars=True),),
+                True,ticks=tuple((end*i/4,f'{end*i/4:g}') for i in range(5)),x_scale='linear',
+                notes=(bins['definition'],),context=(f"Source: {report.metadata.get('source_name','capture')} | SHA-256: {report.metadata.get('source_sha256','not reported')}",))
+            self._rate_plot.show_plots([plot],f"Nominal width: {bins['width_s']} s; origin epoch: {bins['origin_timestamp']}. First/final bins may be partial. Not plaintext goodput.")
+        else:
+            self._rate_plot.show_plots([],bins.get('reason','Analyze a capture with a positive interval to see capture-rate bins.'))
 
     def close(self) -> None:
         if self._closed:
@@ -323,6 +356,7 @@ class TrafficTab:
             self._settle_id = None
         self._filter.trace_remove("write", self._filter_trace)
         self._job.close()
+        self._rate_plot.close()
 
 
 def register_traffic(app, tshark_path: Path | None = None) -> None:

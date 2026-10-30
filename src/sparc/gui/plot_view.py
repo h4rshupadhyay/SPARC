@@ -45,6 +45,11 @@ class PlotView(ttk.Frame):
                                     values=tuple(_CHOICES), state='readonly', width=20, font=self._chart_font)
         self._choice.pack(side='left')
         self._choice.bind('<<ComboboxSelected>>', lambda _event: self.refresh())
+        self.conditional=tk.BooleanVar(master=self,value=False)
+        self._conditional_controls=ttk.Frame(self)
+        self._conditional_controls.grid(row=1,column=0,sticky='w',pady=(0,8))
+        ttk.Checkbutton(self._conditional_controls,text='Include input/output-bit conditional views',
+            variable=self.conditional,command=self.refresh).pack(side='left')
         self.canvas = tk.Canvas(self, background=SURFACE, highlightbackground=BORDER,
                                 highlightcolor=TEXT, highlightthickness=1, takefocus=True)
         self.canvas.grid(row=2, column=0, sticky='nsew')
@@ -52,19 +57,29 @@ class PlotView(ttk.Frame):
         scrollbar.grid(row=2, column=1, sticky='ns')
         self.canvas.configure(yscrollcommand=scrollbar.set)
         self.canvas.bind('<Configure>', lambda _event: self.schedule_draw())
+        self.canvas.bind('<Motion>',self._matrix_hint)
         for event in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
             self.canvas.bind(event, self._scroll)
         for key, direction in (('<Prior>', -1), ('<Next>', 1)):
             self.canvas.bind(key, lambda _event, d=direction: self.canvas.yview_scroll(d, 'pages'))
         self.status = tk.StringVar(master=self, value='Run an experiment to see measured graphs here.')
         self._status_label = ttk.Label(self, textvariable=self.status, wraplength=650, font=self._chart_font)
-        self._status_label.grid(row=3, column=0, columnspan=2, sticky='ew', pady=(8, 0))
+        self._legend_frame=ttk.Frame(self)
+        self._legend_frame.grid(row=3,column=0,columnspan=2,sticky='ew',pady=(6,0))
+        self._legend_items=[]
+        self.scope=tk.StringVar(master=self)
+        self._scope_label=ttk.Label(self,textvariable=self.scope,wraplength=650,font=install(self).small)
+        self._scope_label.grid(row=4,column=0,columnspan=2,sticky='ew',pady=(4,0))
+        self._status_label.grid(row=5, column=0, columnspan=2, sticky='ew', pady=(4, 0))
         self.plots = []
         self._result = None
+        self._external_plots = None
+        self._external_scope = ''
         self._draw_id = None
         self._closed = False
         self._export.state(['disabled'])
         self._operations.grid_remove()
+        self._conditional_controls.grid_remove()
 
     def _scroll(self, event):
         delta = -1 if getattr(event, 'num', None) == 4 or getattr(event, 'delta', 0) > 0 else 1
@@ -72,7 +87,15 @@ class PlotView(ttk.Frame):
         return 'break'
 
     def show(self, result):
+        self._external_plots=None
         self._result = result if isinstance(result, (BenchmarkResult, LabResult, Trial)) else None
+        self.refresh()
+
+    def show_plots(self,plots,scope):
+        """Display already validated non-crypto observations, such as capture bins."""
+        self._result=None
+        self._external_plots=list(plots)
+        self._external_scope=scope
         self.refresh()
 
     def refresh(self):
@@ -80,28 +103,35 @@ class PlotView(ttk.Frame):
             return
         local = isinstance(self._result, BenchmarkResult) and not any(
             row.get('operation') == 'network_round_trip' for row in self._result.summary)
-        if isinstance(self._result, BenchmarkResult):
+        if self._external_plots is not None:
+            self.plots=self._external_plots
+        elif isinstance(self._result, BenchmarkResult):
             self.plots = benchmark_plots(self._result, _CHOICES[self.operation.get()])
         elif isinstance(self._result, (LabResult, Trial)):
-            self.plots = sensitivity_plots(self._result)
+            self.plots = sensitivity_plots(self._result,conditional=self.conditional.get())
         else:
             self.plots = []
         if local:
             self._operations.grid()
         else:
             self._operations.grid_remove()
+        if isinstance(self._result,LabResult) and self._result.trials:
+            self._conditional_controls.grid()
+        else:
+            self._conditional_controls.grid_remove()
         titles = tuple(plot.title for plot in self.plots)
         self._chart_choice.configure(values=titles, state='readonly' if titles else 'disabled')
         if self.chart.get() not in titles:
             self.chart.set(titles[0] if titles else '')
         self._export.state(['!disabled'] if self.plots else ['disabled'])
-        self.status.set('Latest run in this category. Missing measurements remain gaps; SVG includes all panels and run details.'
+        self.status.set('Measured observations. SVG includes full run details.'
                         if self.plots else 'No graphable measurements. Run an experiment or choose other operations.')
         self.canvas.yview_moveto(0)
         self.draw()
 
     def _select_chart(self, _event=None):
         self.canvas.yview_moveto(0)
+        self.status.set('Measured observations. SVG includes full run details.')
         self.draw()
 
     def schedule_draw(self):
@@ -119,18 +149,19 @@ class PlotView(ttk.Frame):
         width = min(1500, available)
         offset = (available - width) / 2
         self._status_label.configure(wraplength=max(240, self.winfo_width() - 32))
+        self._scope_label.configure(wraplength=max(240,self.winfo_width()-32))
         selected = next((plot for plot in self.plots if plot.title == self.chart.get()), None)
-        chart_height = max(140, min(500, int(self.canvas.winfo_height() * .52)))
+        chart_height = max(50, min(500, self.canvas.winfo_height()-126))
         line_height = self._chart_font.metrics('linespace') + 4
-        height = plot_height(selected, width, chart_height, measure=self._chart_font.measure,
-                             line_height=line_height) if selected else 100
+        height = 126+chart_height if selected else 100
         self.canvas.configure(scrollregion=(0, 0, available, height))
+        self._set_legend(selected)
         if selected is None:
             self.canvas.create_text(24, 36, text='Run an experiment to see its graphs.',
                                     anchor='w', fill=TEXT, font=self._chart_font)
             return
         for mark in drawing(selected, width, height, chart_height=chart_height,
-                            measure=self._chart_font.measure, line_height=line_height):
+                            measure=self._chart_font.measure, line_height=line_height,include_footer=False):
             color = chart_color(mark.color)
             xy = tuple(value + (offset if i % 2 == 0 else 0) for i, value in enumerate(mark.xy))
             if mark.kind == 'text':
@@ -147,6 +178,63 @@ class PlotView(ttk.Frame):
                 if mark.dashed:
                     kwargs['dash'] = (5, 4)
                 self.canvas.create_line(*xy, **kwargs)
+
+    def _set_legend(self,plot):
+        items=[] if plot is None else [(series.label,series.color,series.dashed) for series in plot.series]
+        signature=tuple(items)
+        if signature!=getattr(self,'_legend_signature',None):
+            for widget in self._legend_frame.winfo_children(): widget.destroy()
+            self._legend_items=[]
+            for label,color,dashed in items:
+                frame=ttk.Frame(self._legend_frame)
+                swatch=tk.Canvas(frame,width=22,height=14,highlightthickness=0,background=SURFACE)
+                swatch.pack(side='left',padx=(0,4))
+                swatch.create_line(1,7,21,7,fill=chart_color(color),width=2,dash=(4,3) if dashed else ())
+                ttk.Label(frame,text=label,foreground=chart_color(color),font=install(self).small).pack(side='left')
+                self._legend_items.append(frame)
+            self._legend_signature=signature
+        columns=2 if self.winfo_width()<1000 else 3
+        for index,item in enumerate(self._legend_items):
+            item.grid(row=index//columns,column=index%columns,sticky='w',padx=(0,12),pady=1)
+        for index in range(3): self._legend_frame.columnconfigure(index,weight=1 if index<columns else 0)
+        if plot is None:
+            self.scope.set(self._external_scope if self._external_plots is not None else ''); return
+        if self._external_plots is not None:
+            self.scope.set(self._external_scope)
+        elif plot.matrix:
+            self.scope.set(plot.notes[-1]+'\nBlue 0% · neutral 50% · orange 100% · dark: unmeasured. Hover for values.')
+        elif isinstance(self._result,BenchmarkResult):
+            counts=sorted({r.get('count') for r in self._result.summary if type(r.get('count')) is int})
+            repetitions=', '.join(str(count) for count in counts) or 'not reported'
+            scope={'Encrypt/decrypt':'AES-256-GCM signed envelope', 'Hash':'SHA-256 original plaintext',
+                'Sign/verify':'Ed25519 near-constant-length protocol context'}.get(self.operation.get(),
+                'AES-256-GCM / SHA-256 / Ed25519')
+            if any(r.get('operation')=='network_round_trip' for r in self._result.summary):
+                scope='Verified application receipt interval · '+str(self._result.metadata.get('evidence_mode','unspecified evidence mode'))
+            else: scope+=' · primitive calls; key creation, encoding and I/O excluded'
+            if plot.y_label=='Operations/s': scope='Ed25519 near-constant-length protocol context · signing/verification only'
+            self.scope.set(f'{scope}. n={repetitions} per operation/workload. '+
+                ('Box: Q1–Q3; median line; whiskers: observed min–max.' if 'distribution' in plot.title else
+                 'p95 is a percentile, not a confidence interval.' if plot.y_label=='Duration (µs)' else
+                 'Rates use successful measured calls.'))
+        else:
+            counts=' · '.join(note for note in plot.notes if ': n=' in note)
+            values=' · '.join(series.annotations[index] for series in plot.series for index in range(len(series.annotations)))
+            scope='Pooled across input bits/cases; not a conditional avalanche test. ' if plot.title=='Output-bit change frequency' else ''
+            self.scope.set(f'{values} · {counts}\n{scope}Isolated AES-256 block experiment; finite observations, not a security proof.')
+
+    def _matrix_hint(self,event):
+        plot=next((plot for plot in self.plots if plot.title==self.chart.get()),None)
+        if plot is None or not plot.matrix: return
+        width=min(1500,max(380,self.canvas.winfo_width()))
+        offset=(max(380,self.canvas.winfo_width())-width)/2
+        height=max(50,min(500,self.canvas.winfo_height()-126))
+        x=self.canvas.canvasx(event.x)-offset; y=self.canvas.canvasy(event.y)
+        if 94<=x<width-32 and 64<=y<64+height:
+            column=min(127,int((x-94)/(width-126)*128))
+            row=min(len(plot.matrix)-1,int((y-64)/height*len(plot.matrix)))
+            value=plot.matrix[row][column]
+            self.status.set(f'Input bit {row} / output bit {column}: '+('not measured' if value is None else f'{value:g}% of observed cases changed'))
 
     def export(self):
         if not self.plots or self._closed:

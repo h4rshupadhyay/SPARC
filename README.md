@@ -169,7 +169,20 @@ operands and local primitive timings do not establish physical-device network
 performance. Network benchmarks and resource sampling are available in the
 **Analysis** tab; network runs require a connected, authenticated peer.
 
-In **Analysis → Hashing security analysis**, choose collision, preimage, or
+In **Analysis → Experiments → Message lab**, enter a custom UTF-8 message
+(1–16,384 bytes) and select **Analyze message**. Details shows the original and
+recovered text, AES-256-GCM ciphertext/nonce/tag, matching SHA-256 digests,
+Ed25519 public key/signature, and six individual operation times in microseconds.
+This experiment signs the exact message bytes. Leave the optional 64-hex-digit
+AES key blank to generate a fresh lab key. **Save result JSON…** stores the
+current public result, including its message contents, without private keys.
+
+For a custom one-bit experiment, choose **Diffusion / confusion → Custom input**.
+Enter a 32-byte AES key as hex and exactly 16 input bytes as UTF-8 or hex, then
+choose plaintext or key mode and a bit index. AES-256's block is 128 bits; its
+key is 256 bits. Seeded trials and reproducible batches remain available.
+
+In **Analysis → Experiments → Hash security**, choose collision, preimage, or
 second-preimage resistance, a seed, and an attempt limit.
 All searches compare complete 256-bit SHA-256 digests. Results show attempts,
 elapsed time, and any matching synthetic inputs
@@ -178,22 +191,38 @@ with their full digests. **Cancel** retains incomplete hashing results;
 finite searches; it does not establish SHA-256 security. Definitions
 follow [NIST's hash-function guidance](https://csrc.nist.gov/Projects/hash-functions).
 
-**Generate specimen** also displays Ed25519 signature generation time, excluding
-key generation and encoding. Local benchmark signature rows display
-microseconds; CSV timing fields retain nanoseconds.
+In **Signature specimen**, **Generate specimen** displays the public signature
+and signing/verification times, excluding key generation and encoding.
+**Verify specimen** rechecks editable fields and preserves signing time only
+for the matching specimen. **Save result JSON…** and **Load specimen JSON…**
+store and reload its public evidence. Loading always reverifies the signature;
+the imported signing time is reported by the file. Benchmark CSV timings retain
+nanoseconds.
 
-**Analysis → Graphs** plots the latest benchmark's mean operation duration and
-throughput against payload size. Select encryption/decryption, hashing,
-signing/verification, or all operations. Network runs show verified receipt
-duration and network goodput separately. Missing measurements appear as gaps;
-incomplete runs retain their label. **Export graphs SVG…** saves the visible
-graphs with their labels, units, and completion state.
+In **Performance**, select **Use 9 local sizes** for workloads from 64 to 16,384
+bytes. Charts show measured mean/p95 duration, effective plaintext throughput,
+and timing distributions (quartiles, median and observed min–max). Signing and
+verification use operations/s because the protocol context is nearly constant
+in length; the custom Message lab uses a different signed input. Select an
+operation pair for the main presentation; all operations is an optional overview.
+Network/resource tools expand from their checkbox; network runs retain the
+original three-size limits and require a connected peer. Network charts show
+verified receipt duration and goodput with the selected evidence mode.
+Missing measurements appear as gaps; incomplete runs retain their label.
+**Export graphs SVG…** saves the panels for the selected operation group with
+full run details. A logarithmic size axis and connecting lines do not establish
+a proportional or nonproportional timing law; use the observed data.
 
 Sensitivity trials plot observed values alongside model expectations: 50% bit
 change, 99.609375% byte change, and 93.75% lowercase hex-character change.
 **Byte change (character-level proxy)** uses raw ciphertext bytes; the course's
 100% character-level target is displayed separately. Neither that target nor
 the model expectations are forced pass/fail outcomes or proof of security.
+Batch results also show a normalized histogram with a 50% reference and pooled
+output-bit frequencies. Enable conditional views to inspect each flipped input
+bit against each output bit; the heatmap reports cases per input bit and exact
+cell frequencies on hover. Pooled frequencies alone do not establish the
+conditional avalanche criterion.
 
 ## Demonstrations and evidence
 
@@ -208,6 +237,11 @@ the TShark executable, then **Analyze**, **Export SQLite**, or **Export XML**.
 The optional display filter applies to the index and summary; XML always
 describes the full unfiltered source. Captured frame bytes/s is separate from
 application plaintext goodput; conversion packets/s measures processing speed.
+The **Capture rate** result tab plots captured bytes divided by nominal,
+epoch-aligned capture-time bins. Bins start at one second and coarsen to retain
+at most 200 bins. First/final bins may be partial, so their rates differ from
+the first-to-last aggregate. A nonpositive interval produces no rate graph.
+Return to **Summary** to change the source/filter or run an export.
 Source/output aliases and duplicate CLI output paths are rejected. Failed or
 canceled jobs preserve prior outputs before publication; a later CLI failure
 lists artifacts already completed. Publication uncertainty keeps the candidate
@@ -218,6 +252,7 @@ and reports failure. See [setup](docs/setup.md#offline-traffic-analysis) and the
 - [Evidence map, measurement fields, and acceptance checklist](docs/progress-check-evidence.md)
 - [Identity encryption and platform verification evidence](docs/f1-identity-at-rest-evidence.md)
 - [Image transfer and graphical analysis evidence](docs/image-transfer-and-analysis-evidence.md)
+- [Analysis presentation workflow and verification](docs/analysis-presentation-evidence.md)
 - [Traffic index and PDML evidence](docs/t2-traffic-export-evidence.md)
 - [Traffic CLI and native interface evidence](docs/t3-traffic-interface-evidence.md)
 - [Implementation status](docs/implementation-status.md)

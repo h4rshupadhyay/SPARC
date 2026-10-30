@@ -263,6 +263,8 @@ def summarize_database(database: Path) -> TrafficReport:
         if type(actual_count) is not int or metadata["packet_count"] != actual_count:
             _fail()
         bins = {label: 0 for _low, _high, label in _BINS}
+        from .rates import CaptureRateBins
+        capture_bins=CaptureRateBins()
         packet_count = total_bytes = retransmissions = 0
         first_timestamp = last_timestamp = None
         cursor = connection.execute(
@@ -291,6 +293,7 @@ def summarize_database(database: Path) -> TrafficReport:
                 last_timestamp = parsed_timestamp
                 packet_count += 1
                 total_bytes += length
+                capture_bins.add(parsed_timestamp,length)
                 if retrans == 1:
                     retransmissions += 1
                 for low, high, label in _BINS:
@@ -329,6 +332,7 @@ def summarize_database(database: Path) -> TrafficReport:
         conversations, conversation_total = _tcp(connection)
         metadata = dict(metadata)
         metadata.update({
+            'capture_rate_bins':capture_bins.finish(),
             "presentation_limit": _LIMIT,
             "group_totals": {"protocol_counts": protocol_total, "directional_bytes": directional_total,
                              "tcp_conversations": conversation_total},

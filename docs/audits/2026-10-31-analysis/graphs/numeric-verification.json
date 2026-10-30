@@ -1,0 +1,12 @@
+{
+  "independent_numeric_checks_passed": 58,
+  "benchmark_samples": 1800,
+  "sensitivity_trials": 19200,
+  "pooled_frequency_counterexample": {
+    "type": "constructed hypothetical data, not real AES output",
+    "input_bit_0": "alternating output bits always change / never change",
+    "input_bit_1": "opposite alternating output bits always change / never change",
+    "plotted_pooled_frequency": "exactly 50% for all 128 output bits",
+    "conclusion": "pooled frequency cannot establish the per-input-bit avalanche condition"
+  }
+}

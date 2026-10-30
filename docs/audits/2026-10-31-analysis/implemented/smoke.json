@@ -1,0 +1,693 @@
+{
+  "message": {
+    "bytes": 56,
+    "timings_ns": {
+      "hash": 11582,
+      "encrypt": 13776,
+      "decrypt": 5461,
+      "recompute_hash": 1723,
+      "sign": 51727,
+      "verify": 126719
+    },
+    "digest": "a58bde00f05aed917fa2a037e1cdc626c856679c36d2196067b621d0e67623a9",
+    "signature_valid": true
+  },
+  "signature": {
+    "sign_ns": 58311,
+    "verify_ns": 103546,
+    "edited_rejected": true,
+    "loaded_reverified": true
+  },
+  "benchmark": {
+    "samples": 5400,
+    "summary": [
+      {
+        "operation": "hash",
+        "payload_bytes": 64,
+        "count": 100,
+        "mean_ns": 681.61,
+        "median_ns": 671.0,
+        "p95_ns": 761,
+        "throughput_bytes_s": 93895336.04260501
+      },
+      {
+        "operation": "sign",
+        "payload_bytes": 64,
+        "count": 100,
+        "mean_ns": 41225.65,
+        "median_ns": 29315.0,
+        "p95_ns": 43422,
+        "throughput_bytes_s": 1552431.5565673313
+      },
+      {
+        "operation": "encrypt",
+        "payload_bytes": 64,
+        "count": 100,
+        "mean_ns": 2205.86,
+        "median_ns": 2154.0,
+        "p95_ns": 2304,
+        "throughput_bytes_s": 29013627.33809036
+      },
+      {
+        "operation": "decrypt",
+        "payload_bytes": 64,
+        "count": 100,
+        "mean_ns": 3713.28,
+        "median_ns": 3982.5,
+        "p95_ns": 4208,
+        "throughput_bytes_s": 17235436.05653223
+      },
+      {
+        "operation": "recompute_hash",
+        "payload_bytes": 64,
+        "count": 100,
+        "mean_ns": 1025.44,
+        "median_ns": 1072.0,
+        "p95_ns": 1142,
+        "throughput_bytes_s": 62412232.797628336
+      },
+      {
+        "operation": "verify",
+        "payload_bytes": 64,
+        "count": 100,
+        "mean_ns": 97565.06,
+        "median_ns": 92590.0,
+        "p95_ns": 117392,
+        "throughput_bytes_s": 655972.5377097088
+      },
+      {
+        "operation": "hash",
+        "payload_bytes": 128,
+        "count": 100,
+        "mean_ns": 565.35,
+        "median_ns": 556.5,
+        "p95_ns": 641,
+        "throughput_bytes_s": 226408419.5631025
+      },
+      {
+        "operation": "sign",
+        "payload_bytes": 128,
+        "count": 100,
+        "mean_ns": 29554.69,
+        "median_ns": 29055.0,
+        "p95_ns": 32391,
+        "throughput_bytes_s": 4330953.902747753
+      },
+      {
+        "operation": "encrypt",
+        "payload_bytes": 128,
+        "count": 100,
+        "mean_ns": 2823.67,
+        "median_ns": 2219.0,
+        "p95_ns": 4809,
+        "throughput_bytes_s": 45331076.22349637
+      },
+      {
+        "operation": "decrypt",
+        "payload_bytes": 128,
+        "count": 100,
+        "mean_ns": 2356.16,
+        "median_ns": 2189.0,
+        "p95_ns": 2304,
+        "throughput_bytes_s": 54325682.46638598
+      },
+      {
+        "operation": "recompute_hash",
+        "payload_bytes": 128,
+        "count": 100,
+        "mean_ns": 571.98,
+        "median_ns": 561.0,
+        "p95_ns": 641,
+        "throughput_bytes_s": 223784048.39330047
+      },
+      {
+        "operation": "verify",
+        "payload_bytes": 128,
+        "count": 100,
+        "mean_ns": 95163.95,
+        "median_ns": 93000.5,
+        "p95_ns": 104768,
+        "throughput_bytes_s": 1345047.1528346606
+      },
+      {
+        "operation": "hash",
+        "payload_bytes": 256,
+        "count": 100,
+        "mean_ns": 638.41,
+        "median_ns": 631.0,
+        "p95_ns": 711,
+        "throughput_bytes_s": 400996224.99647564
+      },
+      {
+        "operation": "sign",
+        "payload_bytes": 256,
+        "count": 100,
+        "mean_ns": 29749.0,
+        "median_ns": 29226.0,
+        "p95_ns": 31901,
+        "throughput_bytes_s": 8605331.271639382
+      },
+      {
+        "operation": "encrypt",
+        "payload_bytes": 256,
+        "count": 100,
+        "mean_ns": 2283.06,
+        "median_ns": 2234.0,
+        "p95_ns": 2345,
+        "throughput_bytes_s": 112130211.20776501
+      },
+      {
+        "operation": "decrypt",
+        "payload_bytes": 256,
+        "count": 100,
+        "mean_ns": 2250.09,
+        "median_ns": 2219.0,
+        "p95_ns": 2384,
+        "throughput_bytes_s": 113773226.84870383
+      },
+      {
+        "operation": "recompute_hash",
+        "payload_bytes": 256,
+        "count": 100,
+        "mean_ns": 635.89,
+        "median_ns": 631.0,
+        "p95_ns": 701,
+        "throughput_bytes_s": 402585352.8125934
+      },
+      {
+        "operation": "verify",
+        "payload_bytes": 256,
+        "count": 100,
+        "mean_ns": 93507.09,
+        "median_ns": 93050.5,
+        "p95_ns": 97044,
+        "throughput_bytes_s": 2737760.313148447
+      },
+      {
+        "operation": "hash",
+        "payload_bytes": 512,
+        "count": 100,
+        "mean_ns": 777.57,
+        "median_ns": 771.0,
+        "p95_ns": 831,
+        "throughput_bytes_s": 658461617.6035599
+      },
+      {
+        "operation": "sign",
+        "payload_bytes": 512,
+        "count": 100,
+        "mean_ns": 29645.12,
+        "median_ns": 29416.0,
+        "p95_ns": 31049,
+        "throughput_bytes_s": 17270970.73649896
+      },
+      {
+        "operation": "encrypt",
+        "payload_bytes": 512,
+        "count": 100,
+        "mean_ns": 2352.55,
+        "median_ns": 2304.5,
+        "p95_ns": 2475,
+        "throughput_bytes_s": 217636182.01526004
+      },
+      {
+        "operation": "decrypt",
+        "payload_bytes": 512,
+        "count": 100,
+        "mean_ns": 2349.78,
+        "median_ns": 2284.0,
+        "p95_ns": 2425,
+        "throughput_bytes_s": 217892738.89470503
+      },
+      {
+        "operation": "recompute_hash",
+        "payload_bytes": 512,
+        "count": 100,
+        "mean_ns": 771.81,
+        "median_ns": 762.0,
+        "p95_ns": 832,
+        "throughput_bytes_s": 663375701.2736295
+      },
+      {
+        "operation": "verify",
+        "payload_bytes": 512,
+        "count": 100,
+        "mean_ns": 95377.38,
+        "median_ns": 92805.0,
+        "p95_ns": 115058,
+        "throughput_bytes_s": 5368149.135570719
+      },
+      {
+        "operation": "hash",
+        "payload_bytes": 1024,
+        "count": 100,
+        "mean_ns": 1017.68,
+        "median_ns": 1011.5,
+        "p95_ns": 1072,
+        "throughput_bytes_s": 1006210203.6003458
+      },
+      {
+        "operation": "sign",
+        "payload_bytes": 1024,
+        "count": 100,
+        "mean_ns": 29480.9,
+        "median_ns": 29205.0,
+        "p95_ns": 31600,
+        "throughput_bytes_s": 34734353.42883019
+      },
+      {
+        "operation": "encrypt",
+        "payload_bytes": 1024,
+        "count": 100,
+        "mean_ns": 2522.91,
+        "median_ns": 2444.5,
+        "p95_ns": 2594,
+        "throughput_bytes_s": 405880510.99722147
+      },
+      {
+        "operation": "decrypt",
+        "payload_bytes": 1024,
+        "count": 100,
+        "mean_ns": 2514.54,
+        "median_ns": 2465.0,
+        "p95_ns": 2575,
+        "throughput_bytes_s": 407231541.35547656
+      },
+      {
+        "operation": "recompute_hash",
+        "payload_bytes": 1024,
+        "count": 100,
+        "mean_ns": 1016.1,
+        "median_ns": 1012.0,
+        "p95_ns": 1072,
+        "throughput_bytes_s": 1007774825.3124692
+      },
+      {
+        "operation": "verify",
+        "payload_bytes": 1024,
+        "count": 100,
+        "mean_ns": 95133.81,
+        "median_ns": 92710.5,
+        "p95_ns": 107122,
+        "throughput_bytes_s": 10763786.292170996
+      },
+      {
+        "operation": "hash",
+        "payload_bytes": 2048,
+        "count": 100,
+        "mean_ns": 1572.94,
+        "median_ns": 1553.0,
+        "p95_ns": 1653,
+        "throughput_bytes_s": 1302020420.359327
+      },
+      {
+        "operation": "sign",
+        "payload_bytes": 2048,
+        "count": 100,
+        "mean_ns": 29946.84,
+        "median_ns": 29270.5,
+        "p95_ns": 32361,
+        "throughput_bytes_s": 68387849.9367546
+      },
+      {
+        "operation": "encrypt",
+        "payload_bytes": 2048,
+        "count": 100,
+        "mean_ns": 2803.85,
+        "median_ns": 2745.0,
+        "p95_ns": 2915,
+        "throughput_bytes_s": 730424238.1011823
+      },
+      {
+        "operation": "decrypt",
+        "payload_bytes": 2048,
+        "count": 100,
+        "mean_ns": 2774.06,
+        "median_ns": 2755.0,
+        "p95_ns": 2835,
+        "throughput_bytes_s": 738268098.0223932
+      },
+      {
+        "operation": "recompute_hash",
+        "payload_bytes": 2048,
+        "count": 100,
+        "mean_ns": 1559.85,
+        "median_ns": 1543.0,
+        "p95_ns": 1643,
+        "throughput_bytes_s": 1312946757.701061
+      },
+      {
+        "operation": "verify",
+        "payload_bytes": 2048,
+        "count": 100,
+        "mean_ns": 92928.02,
+        "median_ns": 92599.5,
+        "p95_ns": 96472,
+        "throughput_bytes_s": 22038562.74996497
+      },
+      {
+        "operation": "hash",
+        "payload_bytes": 4096,
+        "count": 100,
+        "mean_ns": 2588.27,
+        "median_ns": 2565.0,
+        "p95_ns": 2685,
+        "throughput_bytes_s": 1582524234.3341305
+      },
+      {
+        "operation": "sign",
+        "payload_bytes": 4096,
+        "count": 100,
+        "mean_ns": 31364.83,
+        "median_ns": 29416.0,
+        "p95_ns": 43122,
+        "throughput_bytes_s": 130592131.37772466
+      },
+      {
+        "operation": "encrypt",
+        "payload_bytes": 4096,
+        "count": 100,
+        "mean_ns": 3257.48,
+        "median_ns": 3176.0,
+        "p95_ns": 3356,
+        "throughput_bytes_s": 1257413706.300576
+      },
+      {
+        "operation": "decrypt",
+        "payload_bytes": 4096,
+        "count": 100,
+        "mean_ns": 3283.12,
+        "median_ns": 3196.0,
+        "p95_ns": 3326,
+        "throughput_bytes_s": 1247593752.2844124
+      },
+      {
+        "operation": "recompute_hash",
+        "payload_bytes": 4096,
+        "count": 100,
+        "mean_ns": 2584.7,
+        "median_ns": 2575.0,
+        "p95_ns": 2665,
+        "throughput_bytes_s": 1584710024.374202
+      },
+      {
+        "operation": "verify",
+        "payload_bytes": 4096,
+        "count": 100,
+        "mean_ns": 93467.35,
+        "median_ns": 92930.5,
+        "p95_ns": 96723,
+        "throughput_bytes_s": 43822789.455355264
+      },
+      {
+        "operation": "hash",
+        "payload_bytes": 8192,
+        "count": 100,
+        "mean_ns": 4662.03,
+        "median_ns": 4599.0,
+        "p95_ns": 4699,
+        "throughput_bytes_s": 1757174449.7568655
+      },
+      {
+        "operation": "sign",
+        "payload_bytes": 8192,
+        "count": 100,
+        "mean_ns": 29467.61,
+        "median_ns": 29225.0,
+        "p95_ns": 31330,
+        "throughput_bytes_s": 278000149.99519813
+      },
+      {
+        "operation": "encrypt",
+        "payload_bytes": 8192,
+        "count": 100,
+        "mean_ns": 4039.86,
+        "median_ns": 4028.0,
+        "p95_ns": 4188,
+        "throughput_bytes_s": 2027793042.3331501
+      },
+      {
+        "operation": "decrypt",
+        "payload_bytes": 8192,
+        "count": 100,
+        "mean_ns": 3864.13,
+        "median_ns": 3797.5,
+        "p95_ns": 3908,
+        "throughput_bytes_s": 2120011490.2966516
+      },
+      {
+        "operation": "recompute_hash",
+        "payload_bytes": 8192,
+        "count": 100,
+        "mean_ns": 4309.85,
+        "median_ns": 4298.0,
+        "p95_ns": 4358,
+        "throughput_bytes_s": 1900762207.5014212
+      },
+      {
+        "operation": "verify",
+        "payload_bytes": 8192,
+        "count": 100,
+        "mean_ns": 91333.04,
+        "median_ns": 92094.0,
+        "p95_ns": 98476,
+        "throughput_bytes_s": 89693718.7243521
+      },
+      {
+        "operation": "hash",
+        "payload_bytes": 16384,
+        "count": 100,
+        "mean_ns": 8270.4,
+        "median_ns": 8080.5,
+        "p95_ns": 8676,
+        "throughput_bytes_s": 1981040820.2747147
+      },
+      {
+        "operation": "sign",
+        "payload_bytes": 16384,
+        "count": 100,
+        "mean_ns": 28329.24,
+        "median_ns": 27422.0,
+        "p95_ns": 31379,
+        "throughput_bytes_s": 578342376.9928173
+      },
+      {
+        "operation": "encrypt",
+        "payload_bytes": 16384,
+        "count": 100,
+        "mean_ns": 5905.81,
+        "median_ns": 5731.0,
+        "p95_ns": 6392,
+        "throughput_bytes_s": 2774217253.8567953
+      },
+      {
+        "operation": "decrypt",
+        "payload_bytes": 16384,
+        "count": 100,
+        "mean_ns": 5802.26,
+        "median_ns": 5761.0,
+        "p95_ns": 5861,
+        "throughput_bytes_s": 2823727306.2565274
+      },
+      {
+        "operation": "recompute_hash",
+        "payload_bytes": 16384,
+        "count": 100,
+        "mean_ns": 8728.91,
+        "median_ns": 8667.0,
+        "p95_ns": 8756,
+        "throughput_bytes_s": 1876981203.8387382
+      },
+      {
+        "operation": "verify",
+        "payload_bytes": 16384,
+        "count": 100,
+        "mean_ns": 93548.52,
+        "median_ns": 93051.0,
+        "p95_ns": 97064,
+        "throughput_bytes_s": 175139061.52657467
+      }
+    ],
+    "metadata": {
+      "run_id": "73c7b951afeb44edb055bb254aca9936",
+      "utc": "2026-10-30T20:56:11.325955+00:00",
+      "test_type": "local_cryptographic",
+      "sizes": [
+        64,
+        128,
+        256,
+        512,
+        1024,
+        2048,
+        4096,
+        8192,
+        16384
+      ],
+      "warmups": 2,
+      "repetitions": 100,
+      "python": "3.10.12",
+      "platform": "Linux-7.1.1-76070101-generic-x86_64-with-glibc2.35",
+      "library_versions": {
+        "cryptography": "50.0.2",
+        "pycryptodome": "3.24.0"
+      },
+      "evidence_mode": "synthetic_local",
+      "units": {
+        "payload_bytes": "bytes",
+        "elapsed_ns": "nanoseconds",
+        "throughput_bytes_s": "bytes per second"
+      },
+      "definitions": {
+        "hash": "SHA-256 digest of the ASCII plaintext; digest finalization is timed",
+        "sign_verify": "Ed25519 over an approximately constant-length C2 message context and signing projection",
+        "encrypt_decrypt": "AES-256-GCM over the serialized signed envelope, which grows with plaintext size",
+        "throughput": "plaintext bytes multiplied by successful call count divided by summed primitive durations",
+        "timing_scope": "Includes perf_counter_ns timer overhead; excludes key generation, encoding, nonce/AAD construction, and I/O",
+        "audit": "Local primitive measurements do not include audit work"
+      },
+      "policy_limits": {
+        "text_bytes": 16384,
+        "handshake_json_bytes": 8192,
+        "frame_bytes": 131072,
+        "pending_requests": 100,
+        "event_queue": 1024,
+        "outbound_queue": 1024,
+        "control_queue": 100,
+        "completed_receipts": 100,
+        "chat_history": 500,
+        "cancel_poll_seconds": 1.0,
+        "hello_timeout_seconds": 20.0,
+        "client_auth_timeout_seconds": 150.0,
+        "responder_finished_timeout_seconds": 150.0,
+        "pairing_timeout_seconds": 120.0,
+        "handshake_timeout_seconds": 300.0,
+        "client_finished_timeout_seconds": 10.0,
+        "frame_timeout_seconds": 10.0,
+        "delivery_timeout_seconds": 10.0,
+        "connection_window_seconds": 60.0,
+        "connections_per_source": 20,
+        "connections_global": 60,
+        "source_buckets": 256,
+        "record_rate": 200.0,
+        "record_burst": 400,
+        "heartbeat_seconds": 5.0,
+        "peer_timeout_seconds": 15.0,
+        "reconnect_delays": [
+          1.0,
+          2.0,
+          4.0
+        ],
+        "audit_aggregate_seconds": 5.0,
+        "benchmark_records": 1000,
+        "benchmark_bytes": 16777216,
+        "resource_sample_seconds": 1.0
+      }
+    }
+  },
+  "sensitivity": {
+    "trials": 1920,
+    "summary": {
+      "plaintext": {
+        "bit_percent": {
+          "count": 640,
+          "mean": 50.059814453125,
+          "min": 37.5,
+          "max": 64.0625,
+          "population_std": 4.361775540585652
+        },
+        "byte_percent": {
+          "count": 640,
+          "mean": 99.58984375,
+          "min": 87.5,
+          "max": 100.0,
+          "population_std": 1.6246196595160165
+        },
+        "hex_percent": {
+          "count": 640,
+          "mean": 93.59375,
+          "min": 78.125,
+          "max": 100.0,
+          "population_std": 4.112522558828705
+        }
+      },
+      "key": {
+        "bit_percent": {
+          "count": 1280,
+          "mean": 50.06103515625,
+          "min": 34.375,
+          "max": 63.28125,
+          "population_std": 4.510100764018036
+        },
+        "byte_percent": {
+          "count": 1280,
+          "mean": 99.7119140625,
+          "min": 87.5,
+          "max": 100.0,
+          "population_std": 1.3336336671814137
+        },
+        "hex_percent": {
+          "count": 1280,
+          "mean": 93.85986328125,
+          "min": 78.125,
+          "max": 100.0,
+          "population_std": 4.038218042871971
+        }
+      }
+    },
+    "conditional_titles": [
+      "Conditional plaintext-bit changes",
+      "Conditional key-bit changes"
+    ]
+  },
+  "traffic": {
+    "packets": 5,
+    "bytes": 262,
+    "bins": {
+      "available": true,
+      "width_s": "1",
+      "origin_timestamp": "1",
+      "captured_bytes": [
+        54,
+        54,
+        46,
+        42,
+        66
+      ],
+      "offsets_s": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "bytes_s": [
+        "54",
+        "54",
+        "46",
+        "42",
+        "66"
+      ],
+      "definition": "Captured bytes divided by nominal bin width; epoch-aligned bins. Width doubles when needed to retain at most 200 bins; first/final bins may be partial. This is not application plaintext goodput or the first-to-last aggregate rate.",
+      "reason": ""
+    }
+  },
+  "callback_errors": [],
+  "screenshots": [
+    "01-message-form",
+    "02-message-result",
+    "03-custom-sensitivity-form",
+    "04-single-trial",
+    "05-signature-result",
+    "06-performance-form",
+    "07-duration-compact",
+    "08-duration-wide",
+    "09-throughput",
+    "10-distribution",
+    "11-signature-rate",
+    "12-avalanche-histogram",
+    "13-conditional-wide",
+    "14-hash-security",
+    "15-traffic-summary",
+    "16-traffic-rate"
+  ]
+}

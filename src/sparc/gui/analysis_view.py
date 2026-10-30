@@ -19,13 +19,16 @@ from ..analysis.models import BenchmarkResult, LabResult, ResourceResult, Trial
 from ..analysis.operation_metrics import OperationMetrics
 from ..analysis.network import run_network_benchmark
 from ..analysis.resources import sample_resources
-from ..analysis.sensitivity import run_sensitivity, sensitivity_trial
-from ..analysis.specimen import make_timed_specimen, verify_specimen
-from ..models import ServiceEvent
+from ..analysis.sensitivity import run_sensitivity, sensitivity_trial, custom_sensitivity_trial
+from ..analysis.specimen import make_timed_specimen, verify_specimen, verify_timed_specimen, SignatureResult
+from ..analysis.message import MessageTrial, run_message_trial
+from ..analysis.artifacts import save_artifact, load_signature_artifact
+from ..models import ServiceEvent, SparcError
 from ..storage import atomic_write
 from .jobs import JobController
 from .plot_view import ResultsView
 from .appearance import install, text_options, SURFACE
+from .message_lab import MessageLab
 
 
 _ALLOWED_SIZES = (64, 1024, 16384)
@@ -77,10 +80,14 @@ class AnalysisTab:
         self._progress_text = tk.StringVar(master=self.widget, value="No job running")
         self._mode = tk.StringVar(master=self.widget, value="plaintext")
         self._evidence_mode = tk.StringVar(master=self.widget, value="unspecified")
-        self._experiment_kind = tk.StringVar(master=self.widget, value='Performance')
+        self._experiment_kind = tk.StringVar(master=self.widget, value='Message lab')
         self._seed = tk.StringVar(master=self.widget, value="42")
         self._case_index = tk.StringVar(master=self.widget, value="0")
         self._bit_index = tk.StringVar(master=self.widget, value="0")
+        self._trial_source = tk.StringVar(master=self.widget,value='Seeded input')
+        self._custom_key = tk.StringVar(master=self.widget,value='')
+        self._custom_block = tk.StringVar(master=self.widget,value='')
+        self._block_encoding = tk.StringVar(master=self.widget,value='UTF-8')
         self._batch_cases = tk.StringVar(master=self.widget, value="50")
         self._sizes = tk.StringVar(master=self.widget, value="64,1024,16384")
         self._warmups = tk.StringVar(master=self.widget, value="10")
@@ -90,7 +97,7 @@ class AnalysisTab:
         self._specimen_public = tk.StringVar(master=self.widget, value="")
         self._specimen_signed = tk.StringVar(master=self.widget, value="")
         self._specimen_signature = tk.StringVar(master=self.widget, value="")
-        self._specimen_timing = tk.StringVar(master=self.widget, value="Signature generation: unavailable")
+        self._specimen_timing = tk.StringVar(master=self.widget, value="Not run yet · Generate a specimen to measure signing")
         self._hash_mode = tk.StringVar(master=self.widget, value="Collision resistance")
         self._hash_attempts = tk.StringVar(master=self.widget, value="100000")
         self._hash_seed = tk.StringVar(master=self.widget, value="42")
@@ -136,15 +143,18 @@ class AnalysisTab:
         selector.grid(row=2, column=0, sticky='ew', pady=(4, 16))
         ttk.Label(selector, text='Experiment').pack(side='left', padx=(0, 12))
         self._experiment_choice = ttk.Combobox(selector, textvariable=self._experiment_kind,
-            values=('Performance', 'Avalanche', 'Signature specimen', 'Hash security'), state='readonly', width=28)
+            values=('Message lab', 'Performance', 'Diffusion / confusion', 'Signature specimen', 'Hash security'), state='readonly', width=28)
         self._experiment_choice.pack(side='left')
         self._experiment_choice.bind('<<ComboboxSelected>>', self._select_experiment)
 
-        sensitivity = ttk.LabelFrame(self._content, text="AES sensitivity", padding=8)
+        self._message_lab = MessageLab(self._content,self._run_message)
+        self._message_lab.widget.grid(row=3,column=0,sticky='ew',pady=(0,8))
+
+        sensitivity = ttk.LabelFrame(self._content, text="AES-256 · Diffusion / key sensitivity (confusion)", padding=8)
         sensitivity.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         sensitivity.columnconfigure(0, weight=1)
         fields = ttk.Frame(sensitivity)
-        fields.grid(row=0, column=0, sticky="ew")
+        fields.grid(row=1, column=0, sticky="ew")
         for column in range(3):
             fields.columnconfigure(column, weight=1)
         self._field(fields, "Seed", self._seed, 0, width=18)
@@ -160,19 +170,36 @@ class AnalysisTab:
         self._field(fields, "Batch cases", self._batch_cases, 4, kind="spin", low=1, high=50, width=10)
         fields.winfo_children()[-1].grid_configure(row=1, column=1)
         actions = ttk.Frame(sensitivity)
-        actions.grid(row=1, column=0, sticky="ew", pady=(7, 0))
+        actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self._trial_button = ttk.Button(actions, text="Run single trial", command=self._run_trial)
         self._trial_button.grid(row=0, column=0, sticky="w", padx=(0, 6))
         self._batch_button = ttk.Button(actions, text="Run sensitivity batch", command=self._run_batch)
         self._batch_button.grid(row=0, column=1, sticky="w")
+        custom = ttk.Frame(sensitivity)
+        custom.grid(row=2,column=0,sticky='ew',pady=(8,0))
+        custom.columnconfigure(1,weight=1)
+        ttk.Label(custom,text='Single-trial input').grid(row=0,column=0,sticky='w',padx=(0,8))
+        source_choice=ttk.Combobox(custom,textvariable=self._trial_source,
+            values=('Seeded input','Custom input'),state='readonly')
+        source_choice.grid(row=0,column=1,sticky='ew')
+        self._custom_fields=ttk.Frame(custom)
+        self._custom_fields.grid(row=1,column=0,columnspan=2,sticky='ew',pady=(6,0))
+        self._custom_fields.columnconfigure(1,weight=1)
+        for row,label,variable in ((0,'Lab key (64 hex digits)',self._custom_key),(2,'Block (exactly 16 bytes)',self._custom_block)):
+            ttk.Label(self._custom_fields,text=label).grid(row=row,column=0,sticky='w',padx=(0,8))
+            ttk.Entry(self._custom_fields,textvariable=variable).grid(row=row,column=1,sticky='ew')
+        ttk.Label(self._custom_fields,text='Block encoding').grid(row=1,column=0,sticky='w')
+        ttk.Combobox(self._custom_fields,textvariable=self._block_encoding,values=('UTF-8','Hex'),state='readonly').grid(row=1,column=1,sticky='ew')
+        source_choice.bind('<<ComboboxSelected>>',lambda _:self._custom_fields.grid() if self._trial_source.get()=='Custom input' else self._custom_fields.grid_remove())
+        self._custom_fields.grid_remove()
 
         performance = ttk.LabelFrame(self._content, text="Performance and resources", padding=8)
         performance.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         performance.columnconfigure(0, weight=1)
         perf_top = ttk.Frame(performance)
-        perf_top.grid(row=0, column=0, sticky="ew")
+        perf_top.grid(row=1, column=0, sticky="ew")
         perf_bottom = ttk.Frame(performance)
-        perf_bottom.grid(row=1, column=0, sticky="ew", pady=(3, 0))
+        perf_bottom.grid(row=3, column=0, sticky="ew", pady=(3, 0))
         for fields in (perf_top, perf_bottom):
             for column in range(2):
                 fields.columnconfigure(column, weight=1)
@@ -183,6 +210,9 @@ class AnalysisTab:
             0, kind="spin", low=1, high=1000, width=9,
         )
         local_repetitions_widget.master.grid_configure(row=1, column=0)
+        self._all_sizes_button=ttk.Button(perf_top,text='Use 9 local sizes',
+            command=lambda:self._sizes.set('64,128,256,512,1024,2048,4096,8192,16384'))
+        self._all_sizes_button.grid(row=1,column=1,sticky='ew',pady=(18,0),padx=(0,7))
         self._field(
             perf_bottom, "Network repetitions", self._network_repetitions,
             0, kind="spin", low=1, high=100, width=9,
@@ -197,7 +227,7 @@ class AnalysisTab:
         )
         evidence_widget.master.grid_configure(row=1, column=0)
         perf_actions = ttk.Frame(performance)
-        perf_actions.grid(row=2, column=0, sticky="ew", pady=(7, 0))
+        perf_actions.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         perf_actions.columnconfigure(0, weight=1)
         self._local_button = ttk.Button(
             perf_actions, text="Run local benchmark", command=self._run_local
@@ -215,6 +245,14 @@ class AnalysisTab:
             perf_actions, text="Verify audit metric", command=self._run_audit_metric
         )
         self._audit_metric_button.grid(row=3, column=0, sticky="ew")
+        extra_tools=tk.BooleanVar(master=self.widget,value=False)
+        def toggle_tools():
+            for button in (self._network_button,self._resource_button,self._audit_metric_button):
+                button.grid() if extra_tools.get() else button.grid_remove()
+            perf_bottom.grid() if extra_tools.get() else perf_bottom.grid_remove()
+        ttk.Checkbutton(performance,text='Network benchmark, resource sampling and audit tools',
+            variable=extra_tools,command=toggle_tools).grid(row=2,column=0,sticky='w',pady=(8,0))
+        toggle_tools()
 
         specimen = ttk.LabelFrame(self._content, text="Synthetic signature specimen", padding=8)
         specimen.grid(row=3, column=0, sticky="ew", pady=(0, 8))
@@ -235,6 +273,8 @@ class AnalysisTab:
             specimen_actions, text="Verify specimen", command=self._verify_specimen
         )
         self._verify_specimen_button.grid(row=0, column=1, sticky="w")
+        self._load_specimen_button=ttk.Button(specimen_actions,text='Load specimen JSON…',command=self._load_specimen)
+        self._load_specimen_button.grid(row=1,column=0,columnspan=2,sticky='w',pady=(6,0))
         ttk.Label(specimen, textvariable=self._specimen_timing, wraplength=650).grid(
             row=4, column=0, columnspan=2, sticky="w", pady=(6, 0)
         )
@@ -247,9 +287,9 @@ class AnalysisTab:
             text=("Synthetic searches compare full 256-bit SHA-256 digests. "
                   "No match within the attempt limit is a bounded observation, not proof of security."),
             wraplength=650,
-        ).grid(row=0, column=0, sticky="ew")
+        ).grid(row=1, column=0, sticky="ew",pady=(6,0))
         hash_fields = ttk.Frame(hashing)
-        hash_fields.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        hash_fields.grid(row=2, column=0, sticky="ew", pady=(6, 0))
         hash_fields.columnconfigure((0, 1), weight=1)
         self._field(hash_fields, "Hash property", self._hash_mode, 0, kind="combo",
                     values=tuple(_HASH_MODES), width=28)
@@ -263,8 +303,8 @@ class AnalysisTab:
         seed_field = self._field(hash_fields, "Hash seed", self._hash_seed, 1, width=18)
         seed_field.master.grid_configure(row=1)
         self._hash_button = ttk.Button(hashing, text="Run hash search", command=self._run_hash)
-        self._hash_button.grid(row=2, column=0, sticky="w", pady=(6, 0))
-        self._experiment_frames = {'Performance': performance, 'Avalanche': sensitivity,
+        self._hash_button.grid(row=0, column=0, sticky="w", pady=(0, 4))
+        self._experiment_frames = {'Message lab': self._message_lab.widget,'Performance': performance, 'Avalanche': sensitivity,
                                   'Signature specimen': specimen, 'Hash security': hashing}
         self._select_experiment()
 
@@ -321,6 +361,9 @@ class AnalysisTab:
         results_xscroll = ttk.Scrollbar(result_area, orient=tk.HORIZONTAL, command=self._results.xview)
         results_xscroll.grid(row=2, column=0, sticky="ew")
         self._results.configure(xscrollcommand=results_xscroll.set)
+        results_yscroll=ttk.Scrollbar(result_area,orient=tk.VERTICAL,command=self._results.yview)
+        results_yscroll.grid(row=1,column=1,sticky='ns',pady=(5,0))
+        self._results.configure(yscrollcommand=results_yscroll.set)
         self._details = tk.Text(result_area, height=5, wrap=tk.WORD, state=tk.DISABLED,
                                 **text_options(self._appearance))
         self._details.grid(row=3, column=0, sticky="nsew", pady=(6, 0))
@@ -330,6 +373,7 @@ class AnalysisTab:
         metrics = ttk.LabelFrame(self._plots.metrics, text="Core operation metrics", padding=8)
         metrics.grid(row=0, column=0, sticky="nsew")
         metrics.columnconfigure(0, weight=1)
+        metrics.rowconfigure(0,weight=1)
         self._metrics = ttk.Treeview(
             metrics,
             columns=("operation", "elapsed", "success", "encoded", "frame", "context"),
@@ -363,7 +407,10 @@ class AnalysisTab:
                 column, width=min_width, minwidth=min_width,
                 anchor="w", stretch=column == "context",
             )
-        self._metrics.grid(row=0, column=0, sticky="ew")
+        self._metrics.grid(row=0, column=0, sticky="nsew")
+        metrics_yscroll=ttk.Scrollbar(metrics,orient=tk.VERTICAL,command=self._metrics.yview)
+        metrics_yscroll.grid(row=0,column=1,sticky='ns')
+        self._metrics.configure(yscrollcommand=metrics_yscroll.set)
         metrics_xscroll = ttk.Scrollbar(metrics, orient=tk.HORIZONTAL, command=self._metrics.xview)
         metrics_xscroll.grid(row=1, column=0, sticky="ew")
         self._metrics.configure(xscrollcommand=metrics_xscroll.set)
@@ -423,8 +470,9 @@ class AnalysisTab:
         self._canvas.configure(scrollregion=self._canvas.bbox("all"))
 
     def _select_experiment(self, _event=None):
+        selected={'Diffusion / confusion':'Avalanche'}.get(self._experiment_kind.get(),self._experiment_kind.get())
         for name, frame in self._experiment_frames.items():
-            if name == self._experiment_kind.get():
+            if name == selected:
                 frame.grid()
             else:
                 frame.grid_remove()
@@ -486,9 +534,13 @@ class AnalysisTab:
         self._finish_button.state(["!disabled"] if finish_enabled else ["disabled"])
         self._save_button.state(
             ["!disabled"]
-            if enabled and isinstance(self._last_result, (LabResult, BenchmarkResult, ResourceResult, HashSearchResult))
+            if enabled and isinstance(self._last_result, (LabResult, BenchmarkResult, ResourceResult, HashSearchResult, MessageTrial, SignatureResult, Trial))
             else ["disabled"]
         )
+        self._save_button.configure(text='Save result JSON…' if isinstance(self._last_result,(MessageTrial,SignatureResult,Trial)) else 'Save CSV…')
+        self._load_specimen_button.state(state)
+        self._message_lab.state(enabled)
+        self._all_sizes_button.state(state)
         self._save_metrics_button.state(
             ["!disabled"]
             if enabled and self._has_operation_metrics
@@ -498,14 +550,17 @@ class AnalysisTab:
     def _read_workload(self, repetitions_variable: tk.StringVar, max_repetitions: int):
         raw_sizes = [part.strip() for part in self._sizes.get().split(",")]
         sizes = tuple(int(part) for part in raw_sizes if part)
+        local=repetitions_variable is self._local_repetitions
+        allowed=(64,128,256,512,1024,2048,4096,8192,16384) if local else _ALLOWED_SIZES
         if (
             not raw_sizes
             or len(sizes) != len(raw_sizes)
-            or not 1 <= len(sizes) <= 3
+            or not 1 <= len(sizes) <= (9 if local else 3)
             or len(set(sizes)) != len(sizes)
-            or any(size not in _ALLOWED_SIZES for size in sizes)
+            or any(size not in allowed for size in sizes)
         ):
-            raise ValueError("Choose one to three distinct sizes: 64, 1024, or 16384 bytes")
+            raise ValueError('Local sizes: up to 9 distinct powers of two from 64 to 16384 bytes' if local else
+                'Network sizes: choose up to three distinct sizes: 64, 1024, or 16384 bytes')
         warmups = int(self._warmups.get())
         repetitions = int(repetitions_variable.get())
         if not 0 <= warmups <= 10:
@@ -553,16 +608,36 @@ class AnalysisTab:
 
     def _run_trial(self) -> None:
         try:
-            seed = _parse_seed(self._seed.get())
-            case_index = int(self._case_index.get())
+            seed = _parse_seed(self._seed.get()) if self._trial_source.get()!='Custom input' else 0
+            case_index = int(self._case_index.get()) if self._trial_source.get()!='Custom input' else 0
             mode = self._mode.get()
             bit_index = int(self._bit_index.get())
-        except ValueError as error:
+            custom=None
+            if self._trial_source.get()=='Custom input':
+                key=bytes.fromhex(self._custom_key.get().strip())
+                block=(bytes.fromhex(self._custom_block.get().strip()) if self._block_encoding.get()=='Hex'
+                       else self._custom_block.get().encode('utf-8'))
+                custom=custom_sensitivity_trial(key,block,mode,bit_index)
+        except (ValueError, SparcError, UnicodeError) as error:
             self._status.set(f"Check the trial inputs: {error}")
             return
         self._begin_job(
-            "trial", lambda cancel, _emit: sensitivity_trial(seed, case_index, mode, bit_index)
+            "trial", lambda cancel, _emit: custom if custom is not None else sensitivity_trial(seed, case_index, mode, bit_index)
         )
+
+    def _run_message(self):
+        try:
+            text,key=self._message_lab.read()
+        except ValueError as error:
+            self._status.set(f'Check the message inputs: {error}')
+            return
+        self._begin_job('message',lambda cancel,emit:run_message_trial(text,key))
+
+    def _load_specimen(self):
+        if self._closed or self._busy: return
+        path=filedialog.askopenfilename(parent=self.widget.winfo_toplevel(),title='Load public signature specimen',filetypes=(('JSON','*.json'),))
+        if path:
+            self._begin_job('specimen_load',lambda cancel,emit:load_signature_artifact(Path(path)))
 
     def _run_batch(self) -> None:
         try:
@@ -659,14 +734,16 @@ class AnalysisTab:
             public_key, signed_bytes, signature, sign_ns = make_timed_specimen()
             edited_bytes = bytes((signed_bytes[0] ^ 1,)) + signed_bytes[1:]
             edited_signature = bytes((signature[0] ^ 1,)) + signature[1:]
+            valid, verify_ns=verify_timed_specimen(public_key,signed_bytes,signature)
             return (
                 public_key,
                 signed_bytes,
                 signature,
-                verify_specimen(public_key, signed_bytes, signature),
+                valid,
                 verify_specimen(public_key, edited_bytes, signature),
                 verify_specimen(public_key, signed_bytes, edited_signature),
                 sign_ns,
+                verify_ns,
             )
 
         self._begin_job("specimen_make", work)
@@ -706,10 +783,13 @@ class AnalysisTab:
         except ValueError:
             self._status.set("Specimen rejected: fields must contain hexadecimal bytes")
             return
-        self._begin_job(
-            "specimen_verify",
-            lambda _cancel, _emit: verify_specimen(public_key, signed_bytes, signature),
-        )
+        previous=self._last_result
+        sign_ns=(previous.sign_ns if isinstance(previous,SignatureResult)
+            and (previous.public_key,previous.signed_bytes,previous.signature)==(public_key,signed_bytes,signature) else None)
+        def work(cancel,emit):
+            valid,verify_ns=verify_timed_specimen(public_key,signed_bytes,signature)
+            return SignatureResult(public_key,signed_bytes,signature,valid,sign_ns,verify_ns)
+        self._begin_job('specimen_verify',work)
 
     def _cancel_job(self) -> None:
         if self._closed or not self._busy:
@@ -757,39 +837,41 @@ class AnalysisTab:
             return
         if kind != "result":
             return
-        if operation == "specimen_make" and isinstance(value, tuple) and len(value) == 7:
+        if operation == "specimen_make" and isinstance(value, tuple) and len(value) in (7,8):
             (
                 public_key, signed_bytes, signature,
                 valid, edited_bytes_valid, edited_signature_valid,
                 sign_ns,
-            ) = value
-            self._specimen_public.set(public_key.hex())
-            self._specimen_signed.set(signed_bytes.hex())
-            self._specimen_signature.set(signature.hex())
-            self._specimen_timing.set(f"Signature generation: {sign_ns / 1000:g} µs (excludes key generation)")
+            ) = value[:7]
+            self._last_result=SignatureResult(public_key,signed_bytes,signature,valid,sign_ns,value[7] if len(value)==8 else None)
+            self._last_result_kind=operation
+            self._render_specimen(self._last_result)
             self._status.set("Synthetic signature specimen generated")
-            self._clear_results()
-            self._add_row("Synthetic specimen", "Signature generation (µs)", sign_ns / 1000,
-                          "Ed25519 signing only; key generation and encoding excluded")
             self._details_text(
+                self._details.get('1.0','end-1c')+'\n\n'+
                 "Synthetic public data, separate from live records.\n"
                 f"Original specimen: {'valid' if valid else 'rejected'}.\n"
                 f"Edited signed bytes: {'valid' if edited_bytes_valid else 'rejected'}.\n"
                 f"Edited signature: {'valid' if edited_signature_valid else 'rejected'}."
             )
+            self._refresh_controls()
             self._plots.select(self._plots.details)
             return
-        if operation == "specimen_verify" and isinstance(value, bool):
-            self._clear_results()
-            self._status.set("Specimen signature is valid" if value else "Specimen signature rejected")
-            self._details_text(
-                "The public key, signed bytes, and signature match."
-                if value else "The edited or malformed specimen did not verify."
-            )
+        if operation in ('specimen_verify','specimen_load') and (isinstance(value,SignatureResult) or isinstance(value,bool)):
+            if isinstance(value,bool):
+                value=SignatureResult(bytes.fromhex(self._specimen_public.get()),bytes.fromhex(self._specimen_signed.get()),bytes.fromhex(self._specimen_signature.get()),value)
+            self._last_result=value
+            self._last_result_kind=operation
+            self._render_specimen(value)
+            self._status.set("Specimen signature is valid" if value.valid else "Specimen signature rejected")
+            if operation=='specimen_load':
+                self._status.set('Public specimen loaded and reverified; signing time is reported by the file')
+            self._refresh_controls()
             self._plots.select(self._plots.details)
             return
         if operation in ("export", "metrics_export"):
-            self._status.set(f"CSV saved: {value}")
+            label='Public result JSON' if operation=='export' and isinstance(self._last_result,(MessageTrial,SignatureResult,Trial)) else 'CSV'
+            self._status.set(f"{label} saved: {Path(value).name}")
             return
         if operation == "audit_verify":
             self._plots.show(None)
@@ -823,7 +905,7 @@ class AnalysisTab:
         self._refresh_controls()
         self._progress_text.set("Run finished")
         if isinstance(value, Trial):
-            self._status.set("Single synthetic trial complete")
+            self._status.set('Single custom trial complete' if getattr(value,'input_source',None)=='custom' else 'Single synthetic trial complete')
             self._render_trial(value)
         elif isinstance(value, LabResult):
             self._status.set(
@@ -846,6 +928,9 @@ class AnalysisTab:
                 "canceled": "Hash search canceled; partial results retained",
             }[value.outcome])
             self._render_hash(value)
+        elif isinstance(value,MessageTrial):
+            self._status.set('Custom message analyzed · recovered text and digest match; signature verified')
+            self._render_message(value)
         else:
             self._status.set("Analysis returned an unsupported result")
             self._last_result = None
@@ -859,6 +944,7 @@ class AnalysisTab:
         for row in self._results.get_children(""):
             self._results.delete(row)
         self._details_text("")
+        self._results.configure(height=1)
 
     def _details_text(self, value: str) -> None:
         self._details.configure(state=tk.NORMAL)
@@ -872,11 +958,12 @@ class AnalysisTab:
             "", tk.END,
             values=(self._display(workload), self._display(measurement), self._display(value), self._display(detail)),
         )
+        self._results.configure(height=min(3,max(1,len(self._results.get_children()))))
 
     @staticmethod
     def _display(value: object) -> str:
         if value is None:
-            return "unavailable"
+            return "Not measured"
         if isinstance(value, float):
             return f"{value:,.6g}"
         return str(value)
@@ -888,19 +975,53 @@ class AnalysisTab:
         self._add_row("Ciphertext", "Hex positions changed", f"{(trial.difference.hex_percent * 32 / 100):g} / 32", f"Observed {trial.difference.hex_percent:g}%")
         bit_operand = "plaintext block" if trial.mode == "plaintext" else "key"
         rows = [
-            f"Mode: {trial.mode} · case {trial.case_index} · bit index {trial.bit_index}",
+            f"Input: {getattr(trial,'input_source','seeded')} · mode {trial.mode} · case {trial.case_index} · bit index {trial.bit_index}",
             "Ideal-model expectations: 50% of output bits, 99.609375% of output bytes, and 93.75% of lowercase hex positions change. These are expectations, not pass/fail thresholds.",
             "Coursework character-level target: 100%. Ciphertext bytes are the character-level proxy; binary ciphertext is not Unicode text.",
             "A plaintext-bit flip illustrates diffusion; a key-bit flip illustrates confusion.",
             "Formulas: changed bits / 128 × 100; changed bytes / 16 × 100; changed lowercase hex positions / 32 × 100.",
             f"Observed: bits {trial.difference.bit_percent:g}% · bytes {trial.difference.byte_percent:g}% · hex {trial.difference.hex_percent:g}%.",
-            f"Original synthetic key: {trial.key.hex()}",
-            f"Original synthetic block: {trial.block.hex()}",
+            f"Original {'lab' if getattr(trial,'input_source',None)=='custom' else 'synthetic'} key: {trial.key.hex()}",
+            f"Original {'custom' if getattr(trial,'input_source',None)=='custom' else 'synthetic'} block: {trial.block.hex()}",
             f"Modified {bit_operand}: key {trial.modified_key.hex()} · block {trial.modified_block.hex()}",
             f"Baseline ciphertext: {trial.baseline_ciphertext.hex()}",
             f"Modified ciphertext: {trial.modified_ciphertext.hex()}",
         ]
         self._details_text("\n".join(rows))
+
+    def _render_message(self,result):
+        self._clear_results()
+        for operation,label in (('encrypt','AES-256-GCM encryption'),('decrypt','AES-256-GCM decryption'),
+            ('hash','SHA-256 generation'),('recompute_hash','SHA-256 recomputation'),
+            ('sign','Ed25519 signature generation'),('verify','Ed25519 signature verification')):
+            self._add_row(f'{result.plaintext_bytes} UTF-8 bytes',label,f'{result.timings[operation]/1000:,.6g} µs','Primitive only')
+        self._details_text('\n'.join([
+            'Recovered text matches the original UTF-8 message.',
+            'Hash: match · original and recovered-message SHA-256 digests are equal.',
+            'Signature: valid · Ed25519 over the exact UTF-8 message (not a live protocol context).',
+            'Timing excludes key creation, encoding, I/O and GUI work. Lab keys are not exported.',
+            f'Original text: {result.plaintext}',f'Recovered text: {result.recovered_text}',
+            f'SHA-256: {result.digest}',f'Recomputed SHA-256: {result.recomputed_digest}',
+            f'Ciphertext (hex): {result.ciphertext.hex()}',f'Nonce (hex): {result.nonce.hex()}',
+            f'Authentication tag (hex): {result.tag.hex()}',f'Public key (hex): {result.public_key.hex()}',
+            f'Signature (hex): {result.signature.hex()}']))
+        self._plots.select(self._plots.details)
+
+    def _render_specimen(self,result):
+        self._clear_results()
+        self._specimen_public.set(result.public_key.hex())
+        self._specimen_signed.set(result.signed_bytes.hex())
+        self._specimen_signature.set(result.signature.hex())
+        labels=[]
+        for label,ns in (('Signature generation',result.sign_ns),('Signature verification',result.verify_ns)):
+            self._add_row('Public specimen',label,None if ns is None else f'{ns/1000:,.6g} µs',
+                          'Not measured for these edited fields' if ns is None else 'µs · excludes key generation and encoding')
+            if ns is not None: labels.append(f'{label}: {ns/1000:g} µs')
+        self._specimen_timing.set(' · '.join(labels)+' (excludes key generation)')
+        self._details_text(('The public key, signed bytes, and signature match.' if result.valid else
+                           'The edited or malformed specimen did not verify.')+
+            f'\nPublic key (hex): {result.public_key.hex()}\nSigned bytes (hex): {result.signed_bytes.hex()}'
+            f'\nSignature (hex): {result.signature.hex()}')
 
     def _render_lab(self, result: LabResult) -> None:
         self._clear_results()
@@ -930,6 +1051,9 @@ class AnalysisTab:
                     f"goodput {self._display(summary.get('goodput_bytes_s'))} B/s · "
                     f"characters {self._display(summary.get('characters_s'))}/s"
                 )
+            elif label:
+                rate=None if mean is None or mean<=0 else 1e9/mean
+                rate_detail=f'rate {self._display(rate)} operations/s · near-constant protocol context'
             else:
                 rate_detail = f"throughput {self._display(summary.get('throughput_bytes_s'))} B/s"
             self._add_row(
@@ -982,7 +1106,8 @@ class AnalysisTab:
                       "Full SHA-256 bounded search")
         rows = [HASH_PROPERTIES[result.mode], result.interpretation,
                 f"Outcome: {result.outcome}; complete: {result.complete}.",
-                f"Target / matching digest: {result.target_digest or 'unavailable'}"]
+                (f"Target / matching digest: {result.target_digest}" if result.target_digest else
+                 f"No collision found within {result.attempts:,} attempts; no matching witness is available.")]
         for label, value, digest in (
             ("Input A", result.input_a, result.input_a_sha256),
             ("Input B", result.input_b, result.input_b_sha256),
@@ -997,6 +1122,7 @@ class AnalysisTab:
         if self._closed or self._busy or self._last_result is None:
             return
         result = self._last_result
+        public_artifact=isinstance(result,(MessageTrial,SignatureResult,Trial))
         if isinstance(result, LabResult):
             path_text = filedialog.askdirectory(
                 parent=self.widget.winfo_toplevel(),
@@ -1006,15 +1132,18 @@ class AnalysisTab:
         else:
             path_text = filedialog.asksaveasfilename(
                 parent=self.widget.winfo_toplevel(),
-                title="Save analysis CSV",
-                defaultextension=".csv",
-                filetypes=(("CSV files", "*.csv"), ("All files", "*")),
+                title="Save public analysis result" if public_artifact else "Save analysis CSV",
+                defaultextension=".json" if public_artifact else ".csv",
+                filetypes=(("JSON files", "*.json"),) if public_artifact else (("CSV files", "*.csv"), ("All files", "*")),
             )
         if not path_text:
             return
         path = Path(path_text)
 
         def work(_cancel, _emit):
+            if public_artifact:
+                save_artifact(result,path)
+                return path
             if isinstance(result, LabResult):
                 return export_lab(result, path)
             if isinstance(result, BenchmarkResult):
@@ -1123,8 +1252,8 @@ class AnalysisTab:
                 sample.get("operation", ""),
                 self._display(sample.get("elapsed_ns")),
                 "success" if sample.get("success") else "failed",
-                self._display(sample.get("encoded_bytes")),
-                self._display(sample.get("frame_bytes")),
+                self._display(sample.get("encoded_bytes")) if sample.get('encoded_bytes') is not None else 'Not reported',
+                self._display(sample.get("frame_bytes")) if sample.get('frame_bytes') is not None else 'Not applicable' if sample.get('operation')=='audit' else 'Not reported',
                 repr(sample.get("context", {})),
             ))
 

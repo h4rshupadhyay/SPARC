@@ -373,7 +373,7 @@ def test_local_benchmark_labels_signature_generation_in_microseconds():
 
 @pytest.mark.gui
 @pytest.mark.parametrize("throughput, displayed", [
-    (32000000.0, "3.2e+07"), (0.0, "0"), (None, "unavailable"),
+    (32000000.0, "3.2e+07"), (0.0, "0"), (None, "Not measured"),
 ])
 def test_local_benchmark_displays_primitive_throughput(throughput, displayed):
     from sparc.analysis.models import BenchmarkResult
@@ -400,7 +400,7 @@ def test_local_benchmark_displays_primitive_throughput(throughput, displayed):
 @pytest.mark.gui
 @pytest.mark.parametrize("complete, goodput, characters, displayed", [
     (True, 1024, 512, "goodput 1024 B/s · characters 512/s"),
-    (False, None, None, "goodput unavailable B/s · characters unavailable/s"),
+    (False, None, None, "goodput Not measured B/s · characters Not measured/s"),
 ])
 def test_network_benchmark_displays_confirmed_delivery_rates(
     complete, goodput, characters, displayed,

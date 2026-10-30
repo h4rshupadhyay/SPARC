@@ -20,7 +20,7 @@ def test_benchmark_plots_sort_workloads_convert_units_and_keep_missing_values():
     assert duration.series[0].points==((64,1.0),(1024,None),(16384,3.0))
     assert rate.series[0].points==((64,0.0),(1024,None),(16384,1.0))
     assert duration.y_label=='Duration (µs)'
-    assert rate.y_label=='Local cryptographic throughput (MiB/s)'
+    assert rate.y_label=='Effective plaintext throughput (MiB/s)'
 
 
 def test_network_plots_never_label_goodput_as_primitive_throughput():
