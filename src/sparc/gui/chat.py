@@ -7,6 +7,8 @@ import tkinter as tk
 from tkinter import ttk
 
 from .jobs import JobController
+from .conversation import Conversation
+from .image_chat import ImageChat
 
 
 _HISTORY_LIMIT = 500
@@ -42,12 +44,11 @@ class ChatTab:
         history_frame = ttk.Frame(body)
         history_frame.columnconfigure(0, weight=1)
         history_frame.rowconfigure(0, weight=1)
-        self._history = tk.Listbox(history_frame, height=12, exportselection=False)
+        self._history = Conversation(history_frame, self._selection_changed)
         scroll = ttk.Scrollbar(history_frame, orient=tk.VERTICAL, command=self._history.yview)
         self._history.configure(yscrollcommand=scroll.set)
         self._history.grid(row=0, column=0, sticky="nsew")
         scroll.grid(row=0, column=1, sticky="ns")
-        self._history.bind("<<ListboxSelect>>", self._selection_changed)
         self._notice_label = ttk.Label(history_frame, text="")
         self._notice_label.grid(row=1, column=0, columnspan=2, sticky="w")
         inspector_frame = ttk.Frame(body)
@@ -71,6 +72,7 @@ class ChatTab:
         self._send_button = ttk.Button(compose, text="Send", command=self._send)
         self._send_button.grid(row=0, column=1, sticky="ns", padx=(8, 0))
         self._send_button.state(["disabled"])
+        self._images = ImageChat(self, compose)
         self._error = tk.StringVar(master=self.widget, value="")
         ttk.Label(frame, textvariable=self._error, wraplength=750).grid(row=3, column=0, sticky="w", pady=(5, 0))
 
@@ -86,6 +88,7 @@ class ChatTab:
             self._connected = connected
             self._status.set("Connected" if connected else str(data.get("state", "Disconnected")))
             self._send_button.state(["!disabled"] if connected and self._active_send is None else ["disabled"])
+            self._images.state()
             if not connected:
                 self._early_deliveries.clear()
                 for entry in self._entries:
@@ -97,6 +100,8 @@ class ChatTab:
             self._message(data)
         elif kind == "delivery":
             self._delivery(data)
+        elif kind == "image_transfer":
+            self._images.handle(data)
 
     def _message(self, data: dict) -> None:
         message_id, text = data.get("message_id"), data.get("text")
@@ -158,7 +163,10 @@ class ChatTab:
         if entry.get("key") is not None:
             self._by_key[entry["key"]] = entry
         if len(self._entries) > _HISTORY_LIMIT:
-            removed = self._entries.pop(0)
+            removed = next((item for item in self._entries
+                            if item.get('kind') != 'image' or item['status'] in
+                            {'verified','rejected','canceled','failed','unconfirmed'}), self._entries[0])
+            self._entries.remove(removed)
             if removed.get("key") is not None and self._by_key.get(removed["key"]) is removed:
                 self._by_key.pop(removed["key"], None)
             if removed is self._active_send:
@@ -166,19 +174,11 @@ class ChatTab:
             self._notice = "Older messages removed (history limit: 500)"
 
     def _refresh_history(self) -> None:
-        selected = self._history.curselection()
-        selected_entry = self._entries[selected[0]] if selected and selected[0] < len(self._entries) else None
-        self._history.delete(0, tk.END)
         self._notice_label.configure(text=self._notice)
-        for entry in self._entries:
-            label = f"{entry['origin'].title()} · {entry['status'].title()} · {entry['text'].replace(chr(10), ' ↵ ')}"
-            self._history.insert(tk.END, label)
-        if selected_entry is None and self._entries:
-            selected_entry = self._entries[-1]
-        if selected_entry in self._entries:
-            index = self._entries.index(selected_entry)
-            self._history.selection_set(index)
-            self._show_inspection(selected_entry)
+        self._history.render(self._entries, self._images)
+        selected = self._history.curselection()
+        if selected and selected[0] < len(self._entries):
+            self._show_inspection(self._entries[selected[0]])
 
     def _selection_changed(self, _event=None) -> None:
         selection = self._history.curselection()
@@ -208,6 +208,8 @@ class ChatTab:
             value = getattr(timings, field, None)
             measured = f"{value / 1000:g} µs" if value is not None else "unavailable"
             rows.append(f"  {label}: {measured}")
+        if entry.get('kind') == 'image':
+            rows.extend(self._images.inspection_rows(entry))
         rows.extend([
             f"Message ID: {entry.get('message_id') or 'pending'}",
             f"Direction: {entry.get('direction')}",
@@ -227,6 +229,8 @@ class ChatTab:
                 f"Tag (base64): {self._b64(getattr(inspection, 'tag', None))}",
                 f"Ciphertext (base64): {self._b64(getattr(inspection, 'ciphertext', None))}",
             ])
+        if inspection is not None and getattr(inspection, 'ciphertext_length', 0) > len(inspection.ciphertext):
+            rows.append(f"Ciphertext truncated: showing {len(inspection.ciphertext):,} of {inspection.ciphertext_length:,} bytes")
         self._inspector.configure(state=tk.NORMAL)
         self._inspector.delete("1.0", tk.END)
         self._inspector.insert("1.0", "\n".join(rows))
@@ -310,12 +314,13 @@ class ChatTab:
             return
         self._closed = True
         self._job.close()
+        self._images.close()
         self._early_deliveries.clear()
         self._entries.clear()
         self._by_key.clear()
         self._active_send = None
         self._input.delete("1.0", tk.END)
-        self._history.delete(0, tk.END)
+        self._history.clear()
         self._inspector.configure(state=tk.NORMAL)
         self._inspector.delete("1.0", tk.END)
         self._inspector.configure(state=tk.DISABLED)

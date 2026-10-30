@@ -276,11 +276,9 @@ def test_pending_verified_unconfirmed_and_event_before_send_result():
     visible = _visible(tab.widget).lower()
     assert "unconfirmed" in visible
     assert "outgoing" in visible
-    history_rows = next(
-        child for child in _walk(tab.widget) if isinstance(child, tk.Listbox)
-    )
-    assert sum(original.lower() in history_rows.get(index).lower()
-               for index in range(history_rows.size())) == 2
+    # Mixed Chat history is now a Text surface with embedded image controls.
+    history_rows = tab._history.get('1.0', 'end').splitlines()
+    assert sum(original.lower() in line.lower() for line in history_rows) == 2
     tab.close()
     root.destroy()
 
