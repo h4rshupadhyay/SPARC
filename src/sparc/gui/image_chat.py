@@ -15,7 +15,7 @@ _TERMINAL={'verified','rejected','canceled','failed','unconfirmed'}
 
 
 class ImageChat:
-    def __init__(self,chat,compose):
+    def __init__(self,chat,compose,actions=None):
         self.chat=chat
         self._closed=False
         self._attachment=None
@@ -27,8 +27,8 @@ class ImageChat:
         self._results=queue.Queue(16)
         self._stop=threading.Event()
         self._job=JobController(chat.widget,self._job_result)
-        self._attach_button=ttk.Button(compose,text='Attach image',command=self.attach)
-        self._attach_button.grid(row=1,column=0,sticky='w',pady=(6,0))
+        self._attach_button=ttk.Button(actions if actions is not None else compose,text='Attach image',command=self.attach)
+        self._attach_button.grid(row=0 if actions is not None else 1,column=0,sticky='w')
         self._attachment_frame=ttk.Frame(compose,padding=(0,6,0,0))
         self._attachment_frame.columnconfigure(1,weight=1)
         self._attachment_label=ttk.Label(self._attachment_frame)
@@ -48,12 +48,11 @@ class ImageChat:
     @property
     def thumbnail_count(self): return len(self._thumbs)
 
-    @staticmethod
-    def _photo(image, maximum=(320,180)):
+    def _photo(self,image, maximum=(320,180)):
         from PIL import ImageTk
         display = image.copy()
         display.thumbnail(maximum)
-        return ImageTk.PhotoImage(display)
+        return ImageTk.PhotoImage(display,master=self.chat.widget)
 
     def state(self):
         connected=self.chat._connected and not self._closed
@@ -99,7 +98,7 @@ class ImageChat:
             self._attachment_photo=self._photo(thumb,(160,100))
             self._attachment_label.configure(image=self._attachment_photo)
             self._attachment_details.configure(text=f'Original image · {path.name}\n{info.format} · {info.width} × {info.height} · {size:,} bytes\nSHA-256: {digest}')
-            self._attachment_frame.grid(row=2,column=0,columnspan=2,sticky='ew')
+            self._attachment_frame.grid(row=3,column=0,sticky='ew')
             self.chat._error.set('')
             self.state()
         else:

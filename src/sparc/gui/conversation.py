@@ -1,23 +1,25 @@
 """Native mixed text/image conversation with keyboard selection and stable scroll."""
 import tkinter as tk
 from tkinter import ttk
+from .appearance import install, text_options, SOFT, MUTED
 
 
 class Conversation(tk.Text):
     def __init__(self,parent,on_select):
-        style=ttk.Style(parent)
-        background=style.lookup('TFrame','background') or '#ffffff'
-        foreground=style.lookup('TLabel','foreground') or '#202124'
+        appearance = install(parent)
+        options = text_options(appearance)
+        options['background'] = SOFT
         super().__init__(parent,height=12,wrap=tk.WORD,state=tk.DISABLED,
-                         font='TkDefaultFont',background=background,foreground=foreground,
-                         borderwidth=0,highlightthickness=1,takefocus=True,padx=10,pady=8,
-                         cursor='arrow')
+                         takefocus=True,cursor='arrow',**options)
         self._on_select=on_select
         self._entries=[]
         self._selected=None
         self._controls=[]
-        self.tag_configure('heading',spacing1=8,spacing3=3)
-        self.tag_configure('body',spacing3=8)
+        self.tag_configure('heading',spacing1=16,spacing3=4,foreground=MUTED,font=appearance.small)
+        self.tag_configure('body',spacing3=16)
+        self.tag_configure('empty_title',font=appearance.heading,spacing1=32,spacing3=8)
+        self.tag_configure('empty_help',foreground=MUTED,spacing3=12)
+        self.bind('<Configure>', self._layout_messages, add='+')
         self.bind('<Button-1>',self._click)
         self.bind('<Up>',lambda e:self._step(-1))
         self.bind('<Down>',lambda e:self._step(1))
@@ -26,6 +28,19 @@ class Conversation(tk.Text):
         self.bind('<Button-4>',lambda e:self._wheel(-3))
         self.bind('<Button-5>',lambda e:self._wheel(3))
         self.bind('<MouseWheel>',lambda e:self._wheel(-int(e.delta/120) if abs(e.delta)>=120 else -e.delta))
+        self.configure(state=tk.NORMAL)
+        self._empty_state()
+        self.configure(state=tk.DISABLED)
+
+    def _empty_state(self):
+        self.insert('end','No messages yet\n','empty_title')
+        self.insert('end','Send a message or attach an image to start the conversation.\n'
+                    'Select a message to inspect its security details.','empty_help')
+
+    def _layout_messages(self, _event=None):
+        margin=max(20,self.winfo_width()-820)
+        self.tag_configure('incoming',lmargin1=20,lmargin2=20,rmargin=margin)
+        self.tag_configure('outgoing',lmargin1=margin,lmargin2=margin,rmargin=20)
 
     def _click(self,event):
         self.focus_set()
@@ -85,6 +100,8 @@ class Conversation(tk.Text):
             if tag.startswith('entry_'):
                 self.tag_delete(tag)
         self._entries=list(entries)
+        if not entries:
+            self._empty_state()
         # Only the most recent sixteen images can own a decoded thumbnail.
         candidates=[e for e in entries if e.get('kind')=='image'][-16:]
         if selected is not None and selected.get('kind')=='image' and selected not in candidates:
@@ -119,9 +136,12 @@ class Conversation(tk.Text):
                 if entry.get('reason'):
                     self.insert('end',entry['reason']+'\n','body')
             else:
-                self.insert('end',f"{entry['origin'].title()} · {entry['status'].title()} · {entry['text']}\n",'body')
+                sender='You' if entry['origin']=='outgoing' else 'Peer'
+                self.insert('end',f"{sender} · {entry['status'].title()}\n",'heading')
+                self.insert('end',entry['text']+'\n','body')
             end=self.index('end-1c')
             self.tag_add(tag,start,end)
+            self.tag_add(entry['origin'],start,end)
         self.configure(state=tk.DISABLED)
         if selected in self._entries:
             self._selected=self._entries.index(selected)

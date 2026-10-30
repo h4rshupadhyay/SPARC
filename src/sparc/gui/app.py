@@ -88,6 +88,9 @@ class SparcApp:
         self.root = root
         self.service = service
         self.notebook = ttk.Notebook(root)
+        if isinstance(self.notebook, ttk.Notebook):
+            from .appearance import install
+            install(self.notebook)
         self.notebook.pack(fill="both", expand=True)
         self._tabs = []
         self._closed = False

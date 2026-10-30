@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import gc
 from dataclasses import replace
 import queue
 import threading
@@ -47,6 +48,9 @@ class FakeService:
 
 
 def _make_tab(service=None):
+    # Destroyed Tk roots form cycles. Collect them on the main thread before
+    # another image worker can trigger collection and Tk finalizers there.
+    gc.collect()
     root, notebook = _root_or_skip()
     service = service or FakeService()
     tab = ChatTab(notebook, service)
@@ -245,13 +249,13 @@ def test_pending_verified_unconfirmed_and_event_before_send_result():
     ))
     assert "pending" in _visible(tab.widget).lower()
     assert original in _visible(tab.widget)
-    assert "incoming" in _visible(tab.widget).lower()
+    assert "Peer · Verified" in _visible(tab.widget)
     service.release_send.set()
     assert service.send_returned.wait(1)
     # Wait for Tk to consume the worker result before attempting another send.
     _pump(root, lambda: "disabled" not in _send_button(tab).state())
     assert "disabled" not in _send_button(tab).state()
-    _pump(root, lambda: "outgoing" in _visible(tab.widget).lower())
+    _pump(root, lambda: "You · Pending" in _visible(tab.widget))
     _pump(root, lambda: "pending" in _visible(tab.widget).lower())
     receipt = DeliveryReceipt(service.result_id, 10, 20, len(original.encode()), len(original), 100)
     tab.handle_event(ServiceEvent("delivery", {"message_id": service.result_id, "receipt": receipt}))
@@ -371,8 +375,8 @@ def test_history_identity_includes_origin_and_message_id():
     tab.handle_event(_message(message_id, text, origin="outgoing"))
     visible = _visible(tab.widget).lower()
     assert visible.count(text) >= 2
-    assert "incoming" in visible
-    assert "outgoing" in visible
+    assert "peer · verified" in visible
+    assert "you · pending" in visible
     for index in range(500):
         tab.handle_event(_message(f"{index + 100:032x}", f"replacement-{index}"))
     visible = _visible(tab.widget).lower()
@@ -420,6 +424,7 @@ def test_chat_inspector_timings_precede_long_ciphertext_and_scrollbar_reaches_it
         "sequence": None,
         "origin": "incoming",
     }))
+    tab._history.select(0)
     root.update()
     inspector = tab._inspector
     scrollbars = [child for child in _walk(tab.widget)
