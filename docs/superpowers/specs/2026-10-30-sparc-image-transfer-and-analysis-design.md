@@ -12,6 +12,7 @@ performance graphs, and explicit avalanche/character metric definitions.
 The user selected encrypted image transfer between peers over a local-only
 image encryption laboratory. This supersedes the earlier text-only restriction
 for this feature, without expanding the request to audio or video.
+The user further specified that images must be sent within Chat itself.
 
 The existing text application already provides authenticated sessions, signed
 AES-GCM records, audit evidence, sensitivity trials, operation benchmarks,
@@ -33,28 +34,48 @@ for the small, bounded datasets already produced by Analysis.
 
 ## User-visible image workflow
 
-Add an Images tab alongside Connection, Chat, Audit, and Analysis.
+Integrate image attachments into the existing Chat tab and its conversation
+history. Add an **Attach image** button beside the text composer.
 
-- Sender selects a PNG, JPEG, GIF, or WebP image. Show a bounded original
+- Sender selects a PNG, JPEG, GIF, or WebP image using Attach image. Show a
+  removable attachment preview with a **Send image** action, keeping any text
+  draft intact. Show a bounded original
   preview, detected format, byte size, dimensions, and full SHA-256 digest.
   Animated formats show their first frame; preserve all original file bytes.
-- Send is available only on an authenticated connection. Receiver sees an
-  offer with the peer fingerprint, filename, size, and digest, and chooses
-  Accept and a destination, or Reject. Receiving never trusts the sender's path.
-- Show progress, Cancel, and explicit offered/accepted/transferring/verified/
-  rejected/canceled/failed/unconfirmed states. Text chat remains usable.
+- Send image is available only on an authenticated connection. Sending creates
+  an outgoing image entry in the same chronological history as text messages.
+  The receiver sees an incoming attachment offer in Chat with the peer
+  fingerprint, filename, size, and digest, and chooses **Accept and save** or
+  **Reject** there. Accept and save opens the destination chooser. Receiving
+  never trusts the sender's path.
+- Each image entry shows progress, Cancel, and explicit offered/accepted/
+  transferring/verified/rejected/canceled/failed/unconfirmed states. Keep text
+  composition and sending usable while an image transfer runs.
 - Receiver displays the recovered preview only after authentication, final
-  digest/size checks, and successful publication. Transfer does not re-encode
+  digest/size checks, and successful publication, inline in the corresponding
+  Chat entry. Transfer does not re-encode
   the image; the receiver's SHA-256 must match the sender's original bytes.
-- A security inspector displays the latest chunk's Base64 ciphertext, nonce,
+- Selecting a text or image entry opens its details in Chat's existing security
+  inspector. For images, display the latest chunk's Base64 ciphertext, nonce,
   authentication tag, signature, chunk hash, and local operation timings.
   Limit displayed ciphertext to 4 KiB with a visible truncation notice.
   Ciphertext is binary data, not a purported viewable encrypted image file.
 - Original/recovered image previews and ciphertext are visibly labeled.
   Retain at most 100 transfer summaries and one latest chunk inspection for
-  each active transfer. Do not retain whole images or every chunk in GUI state.
+  each active transfer. Bound the shared conversation to 500 entries, preserving
+  active transfer controls when pruning completed history. Keep at most 16
+  decoded thumbnails in an eviction cache, loading from local files on demand.
+  Do not retain whole images or every chunk in GUI state.
 - Distinguish local encryption/decryption timings from full transfer duration
   and verified file goodput. Do not compare clocks on separate devices.
+
+The current text-only Listbox cannot render image previews or attachment
+controls. Replace that history surface with a scrollable conversation component
+that handles both entry types, preserves keyboard selection and inspector
+access, and keeps a reader's scroll position when new entries arrive while they
+are reading older messages. Preserve existing text delivery reconciliation,
+history bounds, inspector behavior, and cleanup semantics. The builder may
+extract this component from `gui/chat.py` into a focused helper module.
 
 ## Transfer contract
 
@@ -166,7 +187,8 @@ experiments. Do not add a plaintext Unicode metric for binary ciphertext.
 1. Transfer protocol validation, record inspections, and public audit evidence.
 2. A focused peer transfer coordinator integrated with service/session lifecycle.
    Avoid embedding all transfer state and file I/O in the already large service.
-3. Images GUI, bounded preview helpers, and transfer controls.
+3. Chat attachment composer, mixed text/image conversation history, bounded
+   preview helpers, and inline transfer controls.
 4. Reusable chart data/rendering/export helpers and Analysis integration.
 5. Metric labels, documentation, end-to-end demonstration, and regression gate.
 
@@ -186,8 +208,11 @@ No merge, push, or physical Linux-to-Mac completion claim is implied.
 - Exercise rejection, cancellation, destination collisions, disk/audit failure,
   tampered content, interrupted final confirmation, disconnect, and shutdown.
   No partial file is presented as a recovered/verified image.
-- Real Tk tests cover offer acceptance, progress, previews, accessible controls,
-  ciphertext/timing inspection, resizing, and close during work.
+- Real Tk tests cover attaching and sending an image from Chat, interleaved
+  text/image ordering, preserved text drafts, inline offer acceptance, progress,
+  verified recovered previews, keyboard selection, stable scroll position,
+  thumbnail/history eviction, ciphertext/timing inspection, resizing, and close
+  during work. The normal text chat workflow must continue to pass.
 - Chart tests verify plotted coordinates/data, units, sorted workloads, absent
   values, incomplete runs, stale-chart clearing, and faithful SVG exports.
 - Refresh affected text, handshake, audit, identity, availability, analysis,
