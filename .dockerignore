@@ -1,0 +1,15 @@
+**
+!Dockerfile
+!pyproject.toml
+!README.md
+!src/
+!src/**
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+**/identity.json
+**/trusted_peers.json
+**/audit*.json*
+**/.env*
+**/Xauthority*
+

@@ -1,0 +1,72 @@
+name: sparc-lab
+
+x-peer: &peer
+  image: sparc-lab:local
+  build:
+    context: .
+    args:
+      SPARC_UID: ${SPARC_UID:-1000}
+      SPARC_GID: ${SPARC_GID:-1000}
+  init: true
+  environment:
+    DISPLAY: ${DISPLAY:-:0}
+    XAUTHORITY: /run/sparc/Xauthority
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+x-display: &display
+  type: bind
+  source: /tmp/.X11-unix
+  target: /tmp/.X11-unix
+  read_only: true
+  bind:
+    create_host_path: false
+
+x-authority: &authority
+  type: bind
+  source: ${SPARC_XAUTHORITY:-/dev/null}
+  target: /run/sparc/Xauthority
+  read_only: true
+  bind:
+    create_host_path: false
+
+services:
+  alice:
+    <<: *peer
+    hostname: alice
+    command: [python, -m, sparc, --data-dir, /data/alice]
+    volumes:
+      - alice-data:/data
+      - *display
+      - *authority
+    networks:
+      peers:
+        ipv4_address: 172.30.50.10
+
+  bob:
+    <<: *peer
+    hostname: bob
+    command: [python, -m, sparc, --data-dir, /data/bob]
+    volumes:
+      - bob-data:/data
+      - *display
+      - *authority
+    networks:
+      peers:
+        ipv4_address: 172.30.50.11
+
+networks:
+  peers:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: sparc-br0
+    ipam:
+      config:
+        - subnet: 172.30.50.0/24
+
+volumes:
+  alice-data:
+  bob-data:
+

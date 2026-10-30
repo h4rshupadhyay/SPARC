@@ -91,6 +91,13 @@ macOS.
 
 ## Pair two peers
 
+For two distinct private IPs on one Linux desktop, use the
+[Docker peer setup](docs/docker-peers.md):
+
+```sh
+./scripts/docker_peers.sh up
+```
+
 1. Launch each instance with its own data directory and unlock its identity.
 2. In **Connection**, start a listener on one peer and connect from the other
    using its reachable IPv4 address and port. Two listeners on one machine need
