@@ -19,7 +19,7 @@ def test_benchmark_plots_sort_workloads_convert_units_and_keep_missing_values():
     duration,rate=benchmark_plots(benchmark(),('encrypt','decrypt'))
     assert duration.series[0].points==((64,1.0),(1024,None),(16384,3.0))
     assert rate.series[0].points==((64,0.0),(1024,None),(16384,1.0))
-    assert duration.y_label=='Mean duration (µs)'
+    assert duration.y_label=='Duration (µs)'
     assert rate.y_label=='Local cryptographic throughput (MiB/s)'
 
 
@@ -49,8 +49,8 @@ def test_sensitivity_charts_use_each_metrics_actual_expectation():
     from sparc.analysis.plots import sensitivity_plots
     from sparc.analysis.sensitivity import run_sensitivity
     plots=sensitivity_plots(run_sensitivity(42,1))
-    assert len(plots)==3
-    expectations=[p.series[1].points[0][1] for p in plots]
+    assert len(plots)==5
+    expectations=[p.series[1].points[0][1] for p in plots[:3]]
     assert expectations==[50,99.609375,93.75]
     assert 'character-level proxy' in plots[1].title
     assert plots[1].series[2].points[0][1]==100
@@ -79,3 +79,70 @@ def test_plot_labels_have_distinct_workload_positions_and_horizontal_units():
     assert ticks[1].xy[0]-ticks[0].xy[0]>100
     assert next(m for m in marks if m.text==plot.y_label).angle==0
     assert ticks[-1].anchor=='e'
+
+
+def test_duration_includes_p95_without_inventing_missing_percentiles():
+    from sparc.analysis.plots import benchmark_plots
+    result=BenchmarkResult({'warmups':2,'repetitions':3},[],[
+        dict(operation='encrypt',payload_bytes=64,count=3,mean_ns=2000,p95_ns=5000),
+        dict(operation='encrypt',payload_bytes=16384,count=0,mean_ns=None,p95_ns=None),
+    ],False)
+    duration,_=benchmark_plots(result)
+    assert duration.series[1].label=='Encryption p95'
+    assert duration.series[1].points==((64,5.0),(16384,None))
+    assert duration.series[1].dashed
+    assert any('n=3' in line and '64' in line for line in duration.notes)
+
+
+def test_payload_positions_use_numeric_log_spacing_for_uneven_workloads():
+    from sparc.analysis.plots import Plot,Series,drawing
+    plot=Plot('Sizes','Bytes','µs',(Series('Mean',((64,1),(128,2),(16384,3)),'blue'),),True,x_scale='log')
+    ticks=[m for m in drawing(plot) if m.kind=='text' and m.text in ('64','128','16384')]
+    x={m.text:m.xy[0] for m in ticks}
+    assert (x['128']-x['64'])/(x['16384']-x['64'])==pytest.approx(1/8)
+
+
+def test_avalanche_distributions_preserve_each_modes_counts_and_output_bits():
+    from dataclasses import replace
+    from sparc.analysis.models import Difference,LabResult
+    from sparc.analysis.sensitivity import sensitivity_trial
+    from sparc.analysis.plots import sensitivity_plots
+    trial=sensitivity_trial(42,0,'plaintext',0)
+    a=replace(trial,baseline_ciphertext=bytes(16),modified_ciphertext=b'\x80'+bytes(15),difference=Difference(100/128,100/16,100/32))
+    b=replace(a,modified_ciphertext=b'\xc0'+bytes(15),difference=Difference(200/128,100/16,100/32))
+    c=replace(a,mode='key',modified_ciphertext=b'\x40'+bytes(15))
+    # Summary is intentionally empty: distributions must use actual trials.
+    plots=sensitivity_plots(LabResult(42,1,[a,b,c],{},False))
+    histogram=next(p for p in plots if p.title=='Bit-change distribution')
+    assert histogram.series[0].points[0]==(2.5,100.0)
+    assert sum(y for x,y in histogram.series[0].points)==100
+    frequency=next(p for p in plots if p.title=='Output-bit change frequency')
+    assert frequency.series[0].points[:3]==((0,100.0),(1,50.0),(2,0.0))
+    assert frequency.series[1].points[:3]==((0,0.0),(1,100.0),(2,0.0))
+    overview=plots[0]
+    assert not overview.series[0].connected
+    assert overview.series[0].ranges[0]==(0,100/128,200/128)
+
+
+def test_empty_avalanche_and_single_trial_do_not_claim_distributions():
+    from sparc.analysis.plots import sensitivity_plots,plots_svg
+    from sparc.analysis.models import LabResult
+    from sparc.analysis.sensitivity import sensitivity_trial
+    empty=sensitivity_plots(LabResult(42,1,[],{},False))
+    assert all(y is None for x,y in empty[0].series[0].points)
+    assert not any(p.title=='Bit-change distribution' for p in empty)
+    single=sensitivity_plots(sensitivity_trial(42,0,'key',255))
+    assert len(single)==3
+    assert 'Single trial' in plots_svg(single)
+
+
+def test_svg_carries_available_run_context_but_never_raw_operands():
+    from sparc.analysis.plots import benchmark_plots,plots_svg
+    from dataclasses import replace
+    result=replace(benchmark(),metadata=dict(run_id='run<&>',utc='2026-10-30T12:00:00+00:00',
+        warmups=2,repetitions=3,python='3.12',platform='Test OS',evidence_mode='loopback',key='DO_NOT_EXPORT'))
+    svg=plots_svg(benchmark_plots(result))
+    text=' '.join(ET.fromstring(svg).itertext())
+    for value in ('run<&>','2026-10-30','Warmups: 2','Repetitions: 3','Test OS','loopback'):
+        assert value in text
+    assert 'DO_NOT_EXPORT' not in svg
