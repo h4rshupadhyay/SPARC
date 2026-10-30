@@ -7,7 +7,7 @@ from tkinter import filedialog, ttk
 from ..analysis.models import BenchmarkResult, LabResult, Trial
 from ..analysis.plots import benchmark_plots, sensitivity_plots, drawing, plots_svg, plot_height
 from ..storage import atomic_write
-from .appearance import install
+from .appearance import install, SURFACE, TEXT, BORDER, chart_color
 
 _CHOICES = {
     'Encrypt/decrypt': ('encrypt', 'decrypt'),
@@ -45,7 +45,8 @@ class PlotView(ttk.Frame):
                                     values=tuple(_CHOICES), state='readonly', width=20, font=self._chart_font)
         self._choice.pack(side='left')
         self._choice.bind('<<ComboboxSelected>>', lambda _event: self.refresh())
-        self.canvas = tk.Canvas(self, background='white', highlightthickness=1, takefocus=True)
+        self.canvas = tk.Canvas(self, background=SURFACE, highlightbackground=BORDER,
+                                highlightcolor=TEXT, highlightthickness=1, takefocus=True)
         self.canvas.grid(row=2, column=0, sticky='nsew')
         scrollbar = ttk.Scrollbar(self, orient='vertical', command=self.canvas.yview)
         scrollbar.grid(row=2, column=1, sticky='ns')
@@ -125,22 +126,24 @@ class PlotView(ttk.Frame):
                              line_height=line_height) if selected else 100
         self.canvas.configure(scrollregion=(0, 0, available, height))
         if selected is None:
-            self.canvas.create_text(24, 36, text='Run an experiment to see its graphs.', anchor='w')
+            self.canvas.create_text(24, 36, text='Run an experiment to see its graphs.',
+                                    anchor='w', fill=TEXT, font=self._chart_font)
             return
         for mark in drawing(selected, width, height, chart_height=chart_height,
                             measure=self._chart_font.measure, line_height=line_height):
+            color = chart_color(mark.color)
             xy = tuple(value + (offset if i % 2 == 0 else 0) for i, value in enumerate(mark.xy))
             if mark.kind == 'text':
                 # Pixel fonts match the shared geometry and SVG at every Tk DPI.
-                self.canvas.create_text(*xy, text=mark.text, fill=mark.color, anchor=mark.anchor,
+                self.canvas.create_text(*xy, text=mark.text, fill=color, anchor=mark.anchor,
                                         angle=mark.angle, font=self._chart_font)
             elif mark.kind == 'circle':
                 x, y = xy
-                self.canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill=mark.color, outline=mark.color)
+                self.canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill=color, outline=color)
             elif mark.kind == 'rectangle':
-                self.canvas.create_rectangle(*xy, fill=mark.color, outline=mark.color)
+                self.canvas.create_rectangle(*xy, fill=color, outline=color)
             else:
-                kwargs = dict(fill=mark.color, width=1.5)
+                kwargs = dict(fill=color, width=1.5)
                 if mark.dashed:
                     kwargs['dash'] = (5, 4)
                 self.canvas.create_line(*xy, **kwargs)

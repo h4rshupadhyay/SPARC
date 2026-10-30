@@ -30,6 +30,13 @@ local identities, signed audit records, and reproducible analysis tools.
 
 ## Install and run
 
+The desktop uses a dark charcoal theme with larger shared typography across
+all five tabs, charts and the identity dialog. It selects an installed
+sans-serif face (Fira Sans on the verified Linux machine) and a separate
+monospace face for technical evidence. Fonts have native fallbacks and require
+no download. SVG charts retain a light background for standalone documents.
+See [appearance evidence](docs/dark-appearance-evidence.md) for verification.
+
 Run these commands from the repository root. Python 3.10 or newer and a working
 Tk installation are required for the desktop app.
 

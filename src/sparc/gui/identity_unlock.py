@@ -38,6 +38,9 @@ def _safe_error(code: str) -> str:
 def unlock_identity_for_gui(root: tk.Misc, data_dir: Path):
     """Prompt on the Tk thread and return an opaque unlocked-store handle."""
     from ..identity import inspect_identity
+    from .appearance import install
+
+    install(root)
 
     directory = Path(data_dir)
     info = inspect_identity(directory)

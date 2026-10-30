@@ -42,7 +42,7 @@ class ChatTab:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
         header = ttk.Frame(frame)
-        header.grid(row=0, column=0, sticky='ew', pady=(0, 16))
+        header.grid(row=0, column=0, sticky='ew', pady=(0, 10))
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text='Chat', style='Title.TLabel').grid(row=0, column=0, sticky='w')
         ttk.Label(header, textvariable=self._status, style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=(4, 0))
@@ -65,7 +65,7 @@ class ChatTab:
         self._notice_label = ttk.Label(history_frame, text="")
         self._notice_label.grid(row=1, column=0, columnspan=2, sticky="w")
         self._notice_label.grid_remove()
-        inspector_frame = self._inspector_frame = ttk.LabelFrame(body, text='Message security', padding=12)
+        inspector_frame = self._inspector_frame = ttk.LabelFrame(body, text='Message security', padding=8)
         inspector_frame.columnconfigure(0, weight=1)
         inspector_frame.rowconfigure(0, weight=1)
         self._inspector = tk.Text(inspector_frame, height=8, width=38, wrap=tk.WORD,
@@ -83,7 +83,7 @@ class ChatTab:
         body.bind('<Configure>', self._schedule_layout, add='+')
 
         compose = ttk.Frame(frame)
-        compose.grid(row=2, column=0, sticky="ew", pady=(16, 0))
+        compose.grid(row=2, column=0, sticky="ew", pady=(10, 0))
         compose.columnconfigure(0, weight=1)
         ttk.Label(compose, text='Message', style='Heading.TLabel').grid(row=0, column=0, sticky='w', pady=(0, 8))
         self._input = tk.Text(compose, height=3, wrap=tk.WORD, **text_options(self._appearance))
@@ -114,7 +114,10 @@ class ChatTab:
 
     def _layout_conversation(self, _event=None):
         self._layout_id = None
-        if self._closed or not self._security_open.get():
+        if self._closed:
+            return
+        self._input.configure(height=2 if self.widget.winfo_height() < 700 else 3)
+        if not self._security_open.get():
             return
         wide = self._body.winfo_width() >= 1100 or self._body.winfo_height() < 420
         orient = tk.HORIZONTAL if wide else tk.VERTICAL

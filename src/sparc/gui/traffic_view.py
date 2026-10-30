@@ -37,7 +37,7 @@ class TrafficTab:
     """Own a single offline job and bounded results independent of secure chat."""
 
     def __init__(self, parent: ttk.Notebook, tshark_path: Path | None = None) -> None:
-        install(parent)
+        self._appearance = install(parent)
         self.widget = ttk.Frame(parent, padding=16)
         self._root = parent.winfo_toplevel()
         self._closed = False
@@ -66,19 +66,22 @@ class TrafficTab:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(6, weight=1)
         ttk.Label(frame, text="Offline traffic", style="Title.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(frame, text="Analyze a capture saved by Wireshark. The original capture is preserved.",
-                  style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(2, 10))
+        self._intro_label = ttk.Label(frame,
+            text="Analyze a capture saved by Wireshark. The original capture is preserved.", style="Muted.TLabel")
+        self._intro_label.grid(row=1, column=0, sticky="w", pady=(2, 10))
         paths = ttk.Frame(frame)
         paths.grid(row=2, column=0, sticky="ew")
         paths.columnconfigure(1, weight=1)
         self._open_button = ttk.Button(paths, text="Open Capture", command=self._open_capture)
         self._open_button.grid(row=0, column=0, sticky="w", padx=(0, 10))
-        ttk.Label(paths, textvariable=self._source_text, wraplength=520).grid(row=0, column=1, sticky="w")
+        ttk.Entry(paths, textvariable=self._source_text, state="readonly", width=1,
+                  font=self._appearance.small).grid(row=0, column=1, sticky="ew")
         self._tool_button = ttk.Button(paths, text="Choose TShark", command=self._choose_tool)
         self._tool_button.grid(row=1, column=0, sticky="w", padx=(0, 10), pady=(6, 0))
-        ttk.Label(paths, textvariable=self._tool_text, wraplength=520, style="Muted.TLabel").grid(row=1, column=1, sticky="w")
+        ttk.Entry(paths, textvariable=self._tool_text, state="readonly", width=1,
+                  font=self._appearance.small).grid(row=1, column=1, sticky="ew", pady=(6, 0))
         filters = ttk.Frame(frame)
-        filters.grid(row=3, column=0, sticky="ew", pady=10)
+        filters.grid(row=3, column=0, sticky="ew", pady=8)
         filters.columnconfigure(1, weight=1)
         ttk.Label(filters, text="Index display filter (optional)").grid(row=0, column=0, padx=(0, 10))
         self._filter_entry = ttk.Entry(filters, textvariable=self._filter)
@@ -86,7 +89,7 @@ class TrafficTab:
         ttk.Label(frame, text="XML export is always unfiltered. Retransmissions are dissector indications, not loss or attack proof.",
                   wraplength=720, style="Muted.TLabel").grid(row=4, column=0, sticky="ew")
         actions = ttk.Frame(frame)
-        actions.grid(row=5, column=0, sticky="ew", pady=10)
+        actions.grid(row=5, column=0, sticky="ew", pady=8)
         self._analyze_button = ttk.Button(actions, text="Analyze", command=lambda: self._start("analyze"))
         self._sqlite_button = ttk.Button(actions, text="Export SQLite", command=lambda: self._start("sqlite"))
         self._xml_button = ttk.Button(actions, text="Export XML (unfiltered)", command=lambda: self._start("xml"))
@@ -132,6 +135,7 @@ class TrafficTab:
         if source != self._source:
             self._source = source
             self._source_text.set(str(source))
+            self._intro_label.grid_remove()
             self._invalidate()
             self._refresh_controls()
 
