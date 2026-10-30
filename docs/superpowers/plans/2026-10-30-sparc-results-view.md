@@ -31,19 +31,19 @@
 
 **Interfaces:** Consume BenchmarkResult, LabResult, Trial unchanged. Extend Series with connected/ranges, Plot with axis bounds, scale, notes and context. Preserve benchmark_plots, sensitivity_plots, drawing, plot_height and plots_svg entry points.
 
-- [ ] Write failing tests for mean/p95 and missing values; logarithmic spacing; hand-checked distributions and per-output-bit frequencies; empty/single-trial behavior; escaped contextual exports.
-- [ ] Run `.venv/bin/python -m pytest tests/unit/test_analysis_plots.py -q`; confirm expected failures.
-- [ ] Implement the data and shared vector drawing, including readable labels and metadata in SVG.
-- [ ] Run the same command; expect all passing, then commit only this task's files.
+- [x] Write failing tests for mean/p95 and missing values; logarithmic spacing; hand-checked distributions and per-output-bit frequencies; empty/single-trial behavior; escaped contextual exports.
+- [x] Run `.venv/bin/python -m pytest tests/unit/test_analysis_plots.py -q`; confirm expected failures.
+- [x] Implement the data and shared vector drawing, including readable labels and metadata in SVG.
+- [x] Run the same command; expect all passing, then commit only this task's files.
 
 ### Task 2: Results workspace and native verification
 
-**Files:** src/sparc/gui/analysis_view.py; src/sparc/gui/plot_view.py; tests/gui/test_analysis_view.py; docs/image-transfer-and-analysis-evidence.md.
+**Files:** src/sparc/gui/analysis_view.py; src/sparc/gui/plot_view.py; tests/gui/test_analysis_view.py; tests/gui/test_analysis_charts.py; tests/gui/test_analysis_results.py; docs/analysis-results-evidence.md.
 
 **Interfaces:** Consume the Task 1 plotting entry points. AnalysisTab owns workspace and results notebooks, selecting graph tabs on completed result delivery. PlotView owns independent latest-result context, chart selector and SVG export.
 
-- [ ] Write failing real-Tk tests for immediate graph visibility, switching retained results, context-specific operation controls, export preservation and bounded rendering at 800x640.
-- [ ] Run `.venv/bin/python -m pytest tests/gui/test_analysis_view.py -q`; confirm new behavior fails.
-- [ ] Implement native navigation, compact details and scrollable responsive charts; preserve result/export/cancel/close semantics.
-- [ ] Run unit and GUI analysis tests; expect all passing. Inspect native ordinary/wide windows in one batch, fix defects and confirm once.
-- [ ] Run `.venv/bin/python -m pytest -q`, report all failures against the established traffic baseline. Self-review the diff under the user's solo instruction; record evidence and commit only owned files.
+- [x] Write failing real-Tk tests for immediate graph visibility, switching retained results, context-specific operation controls, export preservation and bounded rendering at 800x640.
+- [x] Run `.venv/bin/python -m pytest tests/gui/test_analysis_view.py -q`; confirm new behavior fails.
+- [x] Implement native navigation, compact details and scrollable responsive charts; preserve result/export/cancel/close semantics.
+- [x] Run unit and GUI analysis tests; expect all passing. Inspect native ordinary/wide windows in one batch, fix defects and confirm once.
+- [x] Run `.venv/bin/python -m pytest -q`, report all failures against the established traffic baseline. Self-review the diff under the user's solo instruction; record evidence and commit only owned files.

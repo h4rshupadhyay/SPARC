@@ -1,4 +1,4 @@
-"""Native Analysis graphs use measured results and clear stale displays."""
+"""Native Analysis graphs use measured results and retain identified runs."""
 from pathlib import Path
 import tkinter as tk
 from test_analysis_view import _make_tab, _pump, _visible
@@ -16,9 +16,9 @@ def test_analysis_renders_filters_and_exports_real_benchmark_graphs(tmp_path,mon
         tab._job_kind='local'
         tab._job_result('result',benchmark())
         root.update()
-        view=tab._plots
+        view=tab._plots.performance
         assert len(view.plots)==2
-        assert any('Mean duration' in str(view.canvas.itemcget(i,'text'))
+        assert any('Duration' in str(view.canvas.itemcget(i,'text'))
                    for i in view.canvas.find_all() if view.canvas.type(i)=='text')
         view.operation.set('Sign/verify'); view.refresh()
         assert not view.plots
@@ -28,7 +28,8 @@ def test_analysis_renders_filters_and_exports_real_benchmark_graphs(tmp_path,mon
         view.export()
         assert path.exists() and 'Local cryptographic throughput' in path.read_text()
         tab._job_kind='specimen_verify'; tab._job_result('result',True)
-        assert not view.plots
+        assert view.plots
+        assert tab._plots.tabs.select()==str(tab._plots.details)
     finally: tab.close(); root.destroy()
 
 
@@ -36,19 +37,22 @@ def test_graph_resize_is_coalesced_and_close_cancels_redraw():
     root,tab=_make_tab()
     try:
         tab._job_kind='local'; tab._job_result('result',benchmark())
-        for i in range(25): tab._plots.schedule_draw()
-        assert tab._plots._draw_id is not None
+        view=tab._plots.performance
+        for i in range(25): view.schedule_draw()
+        assert view._draw_id is not None
         tab.close()
-        assert tab._plots._draw_id is None
+        assert view._draw_id is None
         root.update()
     finally: tab.close(); root.destroy()
 
 
-def test_failed_analysis_does_not_leave_a_stale_graph_as_current_result():
+def test_failed_analysis_retains_identified_previous_graph_and_reports_error():
     root,tab=_make_tab()
     try:
         tab._job_kind='local'; tab._job_result('result',benchmark())
-        assert tab._plots.plots
+        previous=tab._plots.performance._result
+        assert tab._plots.performance.plots
         tab._job_kind='hash'; tab._job_result('error',ValueError('invalid input'))
-        assert not tab._plots.plots
+        assert tab._plots.performance._result is previous
+        assert 'Analysis failed' in tab._status.get()
     finally: tab.close(); root.destroy()

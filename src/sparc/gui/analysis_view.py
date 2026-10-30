@@ -25,7 +25,7 @@ from ..analysis.specimen import make_timed_specimen, verify_specimen
 from ..models import ServiceEvent
 from ..storage import atomic_write
 from .jobs import JobController
-from .plot_view import PlotView
+from .plot_view import ResultsView
 
 
 _ALLOWED_SIZES = (64, 1024, 16384)
@@ -101,9 +101,17 @@ class AnalysisTab:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
         frame.rowconfigure(1, weight=0)
-        self._canvas = tk.Canvas(frame, highlightthickness=0, borderwidth=0)
+        self._workspace = ttk.Notebook(frame)
+        self._workspace.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        self._experiments = ttk.Frame(self._workspace)
+        self._experiments.columnconfigure(0, weight=1)
+        self._experiments.rowconfigure(0, weight=1)
+        self._workspace.add(self._experiments, text="Experiments")
+        self._plots = ResultsView(self._workspace, lambda: self._workspace.select(self._plots))
+        self._workspace.add(self._plots, text="Results")
+        self._canvas = tk.Canvas(self._experiments, highlightthickness=0, borderwidth=0)
         self._canvas.grid(row=0, column=0, sticky="nsew")
-        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self._canvas.yview)
+        scrollbar = ttk.Scrollbar(self._experiments, orient=tk.VERTICAL, command=self._canvas.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self._canvas.configure(yscrollcommand=scrollbar.set)
         self._content = ttk.Frame(self._canvas, padding=12)
@@ -249,8 +257,8 @@ class AnalysisTab:
         self._hash_button = ttk.Button(hashing, text="Run hash search", command=self._run_hash)
         self._hash_button.grid(row=2, column=0, sticky="w", pady=(6, 0))
 
-        result_area = ttk.LabelFrame(self._content, text="Run status and results", padding=8)
-        result_area.grid(row=6, column=0, sticky="ew")
+        result_area = ttk.LabelFrame(self._plots.details, text="Latest result details", padding=8)
+        result_area.grid(row=0, column=0, sticky="nsew")
         result_area.columnconfigure(0, weight=1)
         result_area.rowconfigure(3, weight=1)
         result_actions = ttk.Frame(result_area)
@@ -302,12 +310,13 @@ class AnalysisTab:
         results_xscroll = ttk.Scrollbar(result_area, orient=tk.HORIZONTAL, command=self._results.xview)
         results_xscroll.grid(row=2, column=0, sticky="ew")
         self._results.configure(xscrollcommand=results_xscroll.set)
-        self._details = tk.Text(result_area, height=11, wrap=tk.WORD, state=tk.DISABLED)
-        self._details.grid(row=3, column=0, sticky="ew", pady=(6, 0))
-        metrics = ttk.LabelFrame(self._content, text="Core operation metrics", padding=8)
-        self._plots = PlotView(self._content)
-        self._plots.grid(row=7, column=0, sticky="ew", pady=(8, 0))
-        metrics.grid(row=8, column=0, sticky="ew", pady=(8, 0))
+        self._details = tk.Text(result_area, height=5, wrap=tk.WORD, state=tk.DISABLED)
+        self._details.grid(row=3, column=0, sticky="nsew", pady=(6, 0))
+        detail_scroll = ttk.Scrollbar(result_area, orient=tk.VERTICAL, command=self._details.yview)
+        detail_scroll.grid(row=3, column=1, sticky="ns", pady=(6, 0))
+        self._details.configure(yscrollcommand=detail_scroll.set)
+        metrics = ttk.LabelFrame(self._plots.metrics, text="Core operation metrics", padding=8)
+        metrics.grid(row=0, column=0, sticky="nsew")
         metrics.columnconfigure(0, weight=1)
         self._metrics = ttk.Treeview(
             metrics,
@@ -355,7 +364,8 @@ class AnalysisTab:
         self._status_label.grid(
             row=0, column=0, columnspan=4, sticky="ew", pady=(0, 4)
         )
-        ttk.Label(footer, textvariable=self._progress_text, width=23).grid(
+        self._progress_label = ttk.Label(footer, textvariable=self._progress_text, width=23)
+        self._progress_label.grid(
             row=1, column=0, sticky="w", padx=(0, 7)
         )
         self._progress = ttk.Progressbar(footer, mode="determinate", maximum=1, value=0)
@@ -430,6 +440,11 @@ class AnalysisTab:
 
     def _refresh_controls(self) -> None:
         enabled = not self._closed and not self._busy
+        for widget in (self._progress_label, self._progress, self._cancel_button, self._finish_button):
+            if self._busy:
+                widget.grid()
+            else:
+                widget.grid_remove()
         state = ["!disabled"] if enabled else ["disabled"]
         for button in (
             self._trial_button,
@@ -742,14 +757,16 @@ class AnalysisTab:
                 f"Edited signed bytes: {'valid' if edited_bytes_valid else 'rejected'}.\n"
                 f"Edited signature: {'valid' if edited_signature_valid else 'rejected'}."
             )
+            self._plots.select(self._plots.details)
             return
         if operation == "specimen_verify" and isinstance(value, bool):
-            self._plots.show(None)
+            self._clear_results()
             self._status.set("Specimen signature is valid" if value else "Specimen signature rejected")
             self._details_text(
                 "The public key, signed bytes, and signature match."
                 if value else "The edited or malformed specimen did not verify."
             )
+            self._plots.select(self._plots.details)
             return
         if operation in ("export", "metrics_export"):
             self._status.set(f"CSV saved: {value}")
@@ -778,6 +795,7 @@ class AnalysisTab:
                 else "Audit prefix verification failed; failed measurement retained"
             )
             self._progress_text.set("Verification report received")
+            self._plots.select(self._plots.metrics)
             return
 
         self._last_result = value

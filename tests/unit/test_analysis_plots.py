@@ -116,6 +116,9 @@ def test_avalanche_distributions_preserve_each_modes_counts_and_output_bits():
     histogram=next(p for p in plots if p.title=='Bit-change distribution')
     assert histogram.series[0].points[0]==(2.5,100.0)
     assert sum(y for x,y in histogram.series[0].points)==100
+    from sparc.analysis.plots import drawing
+    bars=[mark for mark in drawing(histogram) if mark.kind=='rectangle']
+    assert bars and any(mark.xy[1]<mark.xy[3] for mark in bars)
     frequency=next(p for p in plots if p.title=='Output-bit change frequency')
     assert frequency.series[0].points[:3]==((0,100.0),(1,50.0),(2,0.0))
     assert frequency.series[1].points[:3]==((0,0.0),(1,100.0),(2,0.0))
@@ -146,3 +149,12 @@ def test_svg_carries_available_run_context_but_never_raw_operands():
     for value in ('run<&>','2026-10-30','Warmups: 2','Repetitions: 3','Test OS','loopback'):
         assert value in text
     assert 'DO_NOT_EXPORT' not in svg
+
+
+def test_graph_context_handles_supported_arbitrary_size_seeds():
+    from sparc.analysis.models import LabResult
+    from sparc.analysis.plots import sensitivity_plots,plots_svg
+    plots=sensitivity_plots(LabResult(-(10**5000),1,[],{},False))
+    text=' '.join(ET.fromstring(plots_svg(plots)).itertext())
+    assert '-10000000' in text
+    assert 'Incomplete' in text

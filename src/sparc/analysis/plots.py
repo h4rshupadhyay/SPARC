@@ -6,6 +6,7 @@ import textwrap
 import xml.etree.ElementTree as ET
 
 from .models import BenchmarkResult, LabResult, Trial
+from .sensitivity import _decimal_seed
 
 _COLORS=('#1d4ed8','#b45309','#0f766e','#a21caf','#be123c','#475569')
 _LABELS={'encrypt':'Encryption','decrypt':'Decryption','hash':'Hash generation',
@@ -21,6 +22,7 @@ class Series:
     dashed: bool=False
     connected: bool=True
     ranges: tuple[tuple[float,float,float],...]=()
+    bars: bool=False
 
 
 @dataclass(frozen=True)
@@ -102,7 +104,7 @@ def sensitivity_plots(result: LabResult | Trial) -> list[Plot]:
     trials=result.trials if batch else [result]
     groups={mode:[t for t in trials if t.mode==mode] for mode in modes}
     complete=result.complete if batch else True
-    context=(f'Seed: {result.seed} | Cases requested: {result.cases} | Retained trials: {len(trials)}',) if batch else (
+    context=(f'Seed: {_decimal_seed(result.seed)} | Cases requested: {result.cases} | Retained trials: {len(trials)}',) if batch else (
         f'Single trial | Mode: {result.mode} | Case: {result.case_index} | Input bit: {result.bit_index}',)
     context+=('Synthetic isolated AES-256 block experiment; observations do not establish cryptographic security.',)
     plots=[]
@@ -124,7 +126,7 @@ def sensitivity_plots(result: LabResult | Trial) -> list[Plot]:
             counts=[0]*20
             for trial in group:
                 counts[min(19,int(trial.difference.bit_percent//5))]+=1
-            distribution.append(Series(mode.title(),tuple((2.5+5*i,100*n/len(group) if group else None) for i,n in enumerate(counts)),_COLORS[index]))
+            distribution.append(Series(mode.title(),tuple((2.5+5*i,100*n/len(group) if group else None) for i,n in enumerate(counts)),_COLORS[index],connected=False,bars=True))
             bits=[0]*128
             for trial in group:
                 delta=bytes(a^b for a,b in zip(trial.baseline_ciphertext,trial.modified_ciphertext))
@@ -147,14 +149,14 @@ def _footer_lines(plot: Plot,width: int) -> list[str]:
     return [part for line in (*plot.notes,*plot.context) for part in textwrap.wrap(line,columns)]
 
 
-def plot_height(plot: Plot,width=900) -> int:
-    return 400 + len(plot.series)*24 + len(_footer_lines(plot,width))*22
+def plot_height(plot: Plot,width=900,chart_height=260) -> int:
+    return 180 + chart_height + len(plot.series)*24 + len(_footer_lines(plot,width))*22
 
 
-def drawing(plot: Plot,width=900,height=360) -> list[Mark]:
+def drawing(plot: Plot,width=900,height=360,*,chart_height=260) -> list[Mark]:
     """Layout once; both native and exported graphs consume these exact marks."""
-    width=max(380,width); height=max(plot_height(plot,width),height)
-    left,right,top,bottom=94,width-32,94,314
+    width=max(380,width); height=max(plot_height(plot,width,chart_height),height)
+    left,right,top,bottom=94,width-32,94,94+chart_height
     xs=sorted({x for series in plot.series for x,y in series.points}|{x for x,label in plot.ticks})
     values=[y for series in plot.series for x,y in series.points if y is not None]
     values.extend(high for series in plot.series for x,low,high in series.ranges)
@@ -185,6 +187,7 @@ def drawing(plot: Plot,width=900,height=360) -> list[Mark]:
         px=point(x,0)[0]
         marks.append(Mark('text',(px,bottom+16),text=labels.get(x,f'{x:g}'),anchor='w' if x==xlow else ('e' if x==xhigh else 'center')))
     unavailable=False
+    bar_series=[series for series in plot.series if series.bars]
     for index,series in enumerate(plot.series):
         segment=[]
         def flush():
@@ -196,7 +199,13 @@ def drawing(plot: Plot,width=900,height=360) -> list[Mark]:
                 unavailable=True; flush(); continue
             px,py=point(x,y)
             segment.extend((px,py))
-            marks.append(Mark('circle',(px,py),series.color))
+            if series.bars:
+                group_width=(right-left)/20*.85
+                bar_width=group_width/len(bar_series)
+                bar_left=px-group_width/2+bar_series.index(series)*bar_width
+                marks.append(Mark('rectangle',(bar_left,py,bar_left+bar_width,bottom),series.color))
+            else:
+                marks.append(Mark('circle',(px,py),series.color))
         flush()
         for x,low,high in series.ranges:
             px,py=point(x,low); _,high_y=point(x,high)
@@ -204,12 +213,12 @@ def drawing(plot: Plot,width=900,height=360) -> list[Mark]:
                           Mark('line',(px-5,py,px+5,py),series.color),
                           Mark('line',(px-5,high_y,px+5,high_y),series.color)])
         lx=32
-        ly=392+index*24
+        ly=bottom+78+index*24
         marks.extend([Mark('line',(lx,ly,lx+18,ly),series.color,dashed=series.dashed),
                       Mark('text',(lx+24,ly),series.color,text=series.label)])
     if unavailable:
         marks.append(Mark('text',(right,82),text='Unavailable measurements appear as gaps.',anchor='e'))
-    footer_y=392+len(plot.series)*24
+    footer_y=bottom+78+len(plot.series)*24
     for line in _footer_lines(plot,width):
         marks.append(Mark('text',(32,footer_y),text=line))
         footer_y+=22
@@ -231,6 +240,9 @@ def _svg_element(plot,width,height):
             node.text=mark.text
         elif mark.kind=='circle':
             ET.SubElement(root,'circle',cx=f'{xy[0]:.3f}',cy=f'{xy[1]:.3f}',r='3',fill=mark.color)
+        elif mark.kind=='rectangle':
+            ET.SubElement(root,'rect',x=f'{xy[0]:.3f}',y=f'{xy[1]:.3f}',
+                          width=f'{xy[2]-xy[0]:.3f}',height=f'{xy[3]-xy[1]:.3f}',fill=mark.color)
         else:
             attrs={'points':' '.join(f'{xy[i]:.3f},{xy[i+1]:.3f}' for i in range(0,len(xy),2)),
                    'fill':'none','stroke':mark.color,'stroke-width':'1.5'}
