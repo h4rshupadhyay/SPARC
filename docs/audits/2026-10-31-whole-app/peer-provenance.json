@@ -1,0 +1,46 @@
+{
+  "results": [
+    {
+      "peer": 1,
+      "endpoint": "127.0.0.1:39567",
+      "fingerprint": "67e346d01f1f74a6b9ffbfd09d8a77cbad97bf77da6f63b81e487bb448c58741",
+      "backend_trusted_peers": 1,
+      "visible_remembered_peers": 0,
+      "chat_header": "Connected \u00b7 127.0.0.1:39567",
+      "entries": [
+        {
+          "text": "Earlier message from peer B",
+          "origin": "incoming",
+          "status": "verified",
+          "peer_fingerprint": null,
+          "session_id": null
+        }
+      ]
+    },
+    {
+      "peer": 2,
+      "endpoint": "127.0.0.1:34241",
+      "fingerprint": "6861c1f5750ac58021c56710d26da2f4791ab4b8b7eba384380395600552c225",
+      "backend_trusted_peers": 2,
+      "visible_remembered_peers": 0,
+      "chat_header": "Connected \u00b7 127.0.0.1:34241",
+      "entries": [
+        {
+          "text": "Earlier message from peer B",
+          "origin": "incoming",
+          "status": "verified",
+          "peer_fingerprint": null,
+          "session_id": null
+        },
+        {
+          "text": "New message from DIFFERENT peer C",
+          "origin": "incoming",
+          "status": "verified",
+          "peer_fingerprint": null,
+          "session_id": null
+        }
+      ]
+    }
+  ],
+  "callback_errors": []
+}
