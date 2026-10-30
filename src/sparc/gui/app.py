@@ -37,6 +37,8 @@ def launch(data_dir: Path) -> None:
         root.title("SPARC")
         root.geometry("960x760")
         root.minsize(800, 640)
+        if isinstance(root, tk.Misc):
+            root.withdraw()
         resolved_data_dir = resolve_data_dir(data_dir)
         handle = unlock_identity_for_gui(root, resolved_data_dir)
         service = PeerService._from_unlocked_store(handle)
@@ -51,6 +53,8 @@ def launch(data_dir: Path) -> None:
             from .traffic_view import register_traffic
 
             register_traffic(app)
+        if isinstance(root, tk.Misc):
+            root.deiconify()
         root.mainloop()
     except BaseException:
         if app is not None:
@@ -99,6 +103,10 @@ class SparcApp:
         self._closed = False
         self._after_id = self.root.after(_POLL_MS, self._poll_service)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
+        if isinstance(self.notebook, ttk.Notebook):
+            from .window_chrome import WindowChrome
+
+            self.chrome = WindowChrome(root, notebook=self.notebook)
 
     def add_tab(self, title: str, widget) -> None:
         """Add a tab object or frame; tab objects may expose ``widget``."""
