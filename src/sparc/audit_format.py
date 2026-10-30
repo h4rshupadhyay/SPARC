@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .crypto import message_context
+from .protocol.files import FILE_KINDS, validate_file
 from .encoding import canonical
 from .models import Identity, SparcError
 
@@ -32,11 +33,11 @@ _OPTIONAL_BODY_FIELDS = frozenset({"peer_fingerprint", "endpoint"})
 _OUTER_FIELDS = frozenset({"body", "record_hash", "signature"})
 _STRING_METADATA = frozenset(
     {"code", "reason", "phase", "state", "message_id", "sha256", "run_id", "fingerprint",
-     "endpoint", "approval_time_included", "evidence_mode"}
+     "endpoint", "approval_time_included", "evidence_mode", "transfer_id"}
 )
 _INTEGER_METADATA = frozenset(
     {"sequence", "direction", "byte_count", "frame_bytes", "attempt", "count", "elapsed_ns",
-     "record_count", "encoded_bytes"}
+     "record_count", "encoded_bytes", "size"}
 )
 _METADATA_FIELDS = _STRING_METADATA | _INTEGER_METADATA | {"peer_evidence"}
 _EVIDENCE_FIELDS = frozenset(
@@ -156,6 +157,11 @@ def _validate_projection(projection: object) -> str:
     if not isinstance(projection, dict):
         _schema("Peer signing projection must be an object")
     kind = projection.get("kind")
+    if kind in FILE_KINDS:
+        validate_file(projection, projection=True)
+        if len(canonical(projection)) > _MAX_PROJECTION_BYTES:
+            _schema("Peer signing projection exceeds its size bound")
+        return kind
     if kind == "chat":
         expected = {"kind", "message_id", "byte_count", "sha256"}
     elif kind == "benchmark":
@@ -247,7 +253,7 @@ def _validate_metadata(metadata: object, event: str) -> None:
             continue
         if key in _STRING_METADATA:
             _bounded_string(value, f"metadata.{key}", nonempty=True)
-            if key in {"message_id", "run_id"}:
+            if key in {"message_id", "run_id", "transfer_id"}:
                 _hex(value, _ID_RE, f"metadata.{key}")
             elif key in {"sha256", "fingerprint"}:
                 _hex(value, _HEX64_RE, f"metadata.{key}")
@@ -274,6 +280,8 @@ def _validate_metadata(metadata: object, event: str) -> None:
         "send_attempt": {"message_id", "sha256", "byte_count"},
         "verified_receipt": {"message_id", "sha256", "byte_count", "peer_evidence"},
         "verified_delivery": {"message_id", "sha256", "byte_count", "peer_evidence"},
+        "image_received": {"transfer_id", "sha256", "size", "peer_evidence"},
+        "image_delivered": {"transfer_id", "sha256", "size", "peer_evidence"},
         "security_rejected": {"code", "reason"},
         "reconnect_outcome": {"endpoint", "state", "attempt"},
         "rate_limit_rejected": {"code", "reason", "count"},
@@ -294,10 +302,13 @@ def _validate_metadata(metadata: object, event: str) -> None:
         if projection_kind in {"chat", "benchmark"} and "byte_count" in metadata:
             if projection["byte_count"] != metadata["byte_count"]:
                 _schema("metadata.byte_count disagrees with peer evidence")
+        expected_image_kind = {"image_received": "file_complete", "image_delivered": "file_result"}.get(event)
+        if expected_image_kind and projection_kind != expected_image_kind:
+            _schema("Image event requires matching signed completion evidence")
         peer_fingerprint = hashlib.sha256(public_key).hexdigest()
         if "fingerprint" in metadata and metadata["fingerprint"] != peer_fingerprint:
             _schema("metadata fingerprint does not match peer evidence key")
-        for key in ("message_id", "sha256", "run_id"):
+        for key in ("message_id", "sha256", "run_id", "transfer_id", "size"):
             if key in projection and key in metadata and projection[key] != metadata[key]:
                 _schema(f"metadata.{key} disagrees with peer evidence")
         for key in ("direction", "sequence"):
@@ -305,7 +316,7 @@ def _validate_metadata(metadata: object, event: str) -> None:
                 _schema(f"metadata.{key} disagrees with peer evidence")
         if projection["kind"] == "benchmark" and "run_id" not in metadata:
             _schema("benchmark evidence requires metadata.run_id")
-    if event in {"verified_receipt", "verified_delivery"} and evidence is None:
+    if event in {"verified_receipt", "verified_delivery", "image_received", "image_delivered"} and evidence is None:
         _schema("verified message events require peer evidence")
 
 

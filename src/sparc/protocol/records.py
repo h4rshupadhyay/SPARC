@@ -14,6 +14,7 @@ from ..encoding import canonical, parse_object
 from ..models import Identity, Inspection, OpenedRecord, ProtectedRecord, Role, SparcError, Timings
 from .framing import Frame, pack_frame
 from .messages import decode_base64, signing_projection, validate_application
+from .files import FileInspection
 
 
 _UINT64_MAX = 2**64 - 1
@@ -203,6 +204,15 @@ class SessionCodec:
                 timings=Timings(hash_ns=None, sign_ns=sign_ns, encrypt_ns=encrypt_ns),
             )
 
+        if payload.get('kind') == 'file_chunk':
+            inspection = FileInspection(
+                message_id=payload['transfer_id'], sequence=sequence, sha256=payload['sha256'],
+                computed_sha256=None, signature=signature, ciphertext=ciphertext_and_tag[:-_TAG_BYTES][:4096],
+                ciphertext_length=len(ciphertext_and_tag)-_TAG_BYTES, nonce=nonce,
+                tag=ciphertext_and_tag[-_TAG_BYTES:], plaintext_bytes=len(plaintext),
+                timings=Timings(sign_ns=sign_ns, encrypt_ns=encrypt_ns),
+            )
+
         self._send_next = sequence + 1
         return ProtectedRecord(frame=encoded, inspection=inspection)
 
@@ -276,6 +286,14 @@ class SessionCodec:
             if computed_digest != payload["sha256"]:
                 raise SparcError("digest_mismatch", "Application text digest does not match")
 
+        if payload['kind'] == 'file_chunk':
+            data = decode_base64(payload['data'], payload['byte_count'])
+            started = time.perf_counter_ns()
+            computed_digest = hashlib.sha256(data).hexdigest()
+            hash_ns = time.perf_counter_ns() - started
+            if computed_digest != payload['sha256']:
+                raise SparcError('digest_mismatch', 'Application image chunk digest does not match')
+
         signature = decode_base64(payload["signature"], 64)
         projection = signing_projection(payload)
         context = message_context(self._session_id, self._receive_direction(), sequence, projection)
@@ -306,6 +324,16 @@ class SessionCodec:
                     decrypt_ns=decrypt_ns,
                     verify_ns=verify_ns,
                 ),
+            )
+
+        if payload['kind'] == 'file_chunk':
+            inspection = FileInspection(
+                message_id=payload['transfer_id'], sequence=sequence, sha256=payload['sha256'],
+                computed_sha256=computed_digest, signature=signature,
+                ciphertext=ciphertext_and_tag[:-_TAG_BYTES][:4096],
+                ciphertext_length=len(ciphertext_and_tag)-_TAG_BYTES, nonce=nonce,
+                tag=ciphertext_and_tag[-_TAG_BYTES:], plaintext_bytes=len(plaintext),
+                timings=Timings(hash_ns=hash_ns, decrypt_ns=decrypt_ns, verify_ns=verify_ns),
             )
 
         self._receive_next = sequence + 1
