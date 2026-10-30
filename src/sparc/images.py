@@ -3,6 +3,8 @@
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+import os
+import tempfile
 import warnings
 
 from .models import SparcError
@@ -78,3 +80,33 @@ def make_thumbnail(path):
         thumbnail = image.convert('RGB')
         thumbnail.thumbnail((384, 256))
         return thumbnail
+
+
+def save_image_copy(source: Path, destination: Path, *, cancel=None) -> Path:
+    """Stream an exact copy and publish it only after the copy completes."""
+    destination = Path(destination)
+    descriptor, name = tempfile.mkstemp(prefix='.sparc-save-', dir=destination.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, 'wb') as output, Path(source).open('rb') as input_file:
+            size = 0
+            while True:
+                if cancel is not None and cancel.is_set():
+                    raise SparcError('operation_cancelled', 'Image save was canceled')
+                data = input_file.read(64 * 1024)
+                if not data:
+                    break
+                size += len(data)
+                if size > MAX_FILE_BYTES:
+                    raise SparcError('invalid_image', 'Image exceeds 100 MiB')
+                output.write(data)
+            if size == 0:
+                raise SparcError('invalid_image', 'Image is empty')
+            output.flush()
+            os.fsync(output.fileno())
+        if cancel is not None and cancel.is_set():
+            raise SparcError('operation_cancelled', 'Image save was canceled')
+        os.replace(temporary, destination)
+        return destination
+    finally:
+        temporary.unlink(missing_ok=True)

@@ -9,6 +9,7 @@ import re
 import secrets
 import socket
 import threading
+import tempfile
 import time
 from dataclasses import dataclass, replace
 from collections import OrderedDict
@@ -284,6 +285,8 @@ class PeerService:
         )
         self._hash_ns_by_id: dict[str, int] = {}
         self._workers: set[threading.Thread] = set()
+        self._runtime_images = None
+        self._runtime_image_paths: OrderedDict[str, Path] = OrderedDict()
         self._pairings = PairingRequests(self._emit_pairing, limits.cancel_poll_seconds)
 
     @property
@@ -735,6 +738,22 @@ class PeerService:
     def respond_to_image(self, transfer_id: str, destination: Path | None) -> None:
         self._image_manager().respond(transfer_id, destination)
 
+    def receive_image(self, transfer_id: str) -> Path:
+        """Receive into private runtime storage, retained across reconnects."""
+        if re.fullmatch(r'[0-9a-f]{32}', transfer_id) is None:
+            raise SparcError('invalid_transfer', 'Image transfer ID is invalid')
+        with self._state_lock:
+            manager = self._image_manager()
+            if self._runtime_images is None:
+                self._runtime_images = tempfile.TemporaryDirectory(prefix='sparc-images-')
+            path = Path(self._runtime_images.name) / transfer_id
+            while len(self._runtime_image_paths) >= 100:
+                _, oldest = self._runtime_image_paths.popitem(last=False)
+                oldest.unlink(missing_ok=True)
+            manager.respond(transfer_id, path)
+            self._runtime_image_paths[transfer_id] = path
+            return path
+
     def cancel_image(self, transfer_id: str) -> None:
         self._image_manager().cancel(transfer_id)
 
@@ -814,6 +833,10 @@ class PeerService:
                 continue
             remaining = max(0.0, deadline - time.monotonic())
             worker.join(timeout=remaining)
+        if self._runtime_images is not None:
+            self._runtime_images.cleanup()
+            self._runtime_images = None
+            self._runtime_image_paths.clear()
 
     def _emit(self, event: ServiceEvent, cancel: threading.Event | None = None) -> None:
         if not isinstance(event, ServiceEvent):

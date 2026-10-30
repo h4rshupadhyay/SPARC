@@ -1,5 +1,4 @@
 """Images are ordinary chronological Chat attachments with inline controls."""
-import hashlib
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
@@ -12,6 +11,7 @@ from test_chat_view import _make_tab, _visible, _walk, _pump, _message, FakeServ
 
 class ImageService(FakeService):
     def send_image(self,path): self.calls.append(('send_image',Path(path))); return 'a'*32
+    def receive_image(self,tid): self.calls.append(('receive',tid))
     def respond_to_image(self,tid,path): self.calls.append(('respond',tid,path))
     def cancel_image(self,tid): self.calls.append(('cancel',tid))
 
@@ -42,7 +42,7 @@ def test_attach_preview_and_send_stay_in_chat_and_preserve_text_draft(tmp_path,m
         _pump(root,lambda:'Original image' in _visible(tab.widget),timeout=3)
         assert tab._input.get('1.0','end-1c')=='draft text remains'
         assert 'Original image' in _visible(tab.widget)
-        assert hashlib.sha256(path.read_bytes()).hexdigest() in _visible(tab.widget)
+        assert tab._images._attachment == path
         button(tab,'Send image').invoke()
         _pump(root,lambda:any(c[0]=='send_image' for c in service.calls))
         assert tab._input.get('1.0','end-1c')=='draft text remains'
@@ -50,7 +50,7 @@ def test_attach_preview_and_send_stay_in_chat_and_preserve_text_draft(tmp_path,m
     finally: tab.close(); root.destroy()
 
 
-def test_incoming_offer_accepts_in_chat_and_only_verified_file_gets_preview(tmp_path,monkeypatch):
+def test_incoming_image_receives_in_chat_and_only_verified_file_gets_preview(tmp_path,monkeypatch):
     service=ImageService(); root,tab,_=_make_tab(service)
     try:
         tab.handle_event(ServiceEvent('state',dict(state='connected')))
@@ -62,23 +62,26 @@ def test_incoming_offer_accepts_in_chat_and_only_verified_file_gets_preview(tmp_
         assert visible.index('before image')<visible.index('test.png')<visible.index('after image')
         assert 'Recovered image' not in visible
         monkeypatch.setattr('sparc.gui.image_chat.filedialog.asksaveasfilename',lambda **kw:str(tmp_path/'saved.png'))
-        button(tab,'Accept and save').invoke()
-        _pump(root,lambda:any(c[0]=='respond' for c in service.calls))
-        assert ('respond','a'*32,tmp_path/'saved.png') in service.calls
+        _pump(root,lambda:('receive','a'*32) in service.calls)
+        assert ('receive','a'*32) in service.calls
+        assert 'Accept and save' not in visible and 'Reject' not in visible
         tab.handle_event(transfer(status='verified',path=path))
         _pump(root,lambda:'Recovered image' in _visible(tab.widget),timeout=3)
+        button(tab,'Save image').invoke()
+        _pump(root,lambda:(tmp_path/'saved.png').exists(),timeout=3)
+        assert (tmp_path/'saved.png').read_bytes()==path.read_bytes()
         assert tab._images.thumbnail_count<=16
         assert 'b'*64 in tab._inspector.get('1.0','end') or 'test.png' in tab._history.get('1.0','end')
     finally: tab.close(); root.destroy()
 
 
-def test_inline_reject_cancel_and_history_keyboard_selection():
+def test_inline_receive_cancel_and_history_keyboard_selection():
     service=ImageService(); root,tab,_=_make_tab(service)
     try:
         tab.handle_event(ServiceEvent('state',dict(state='connected')))
         tab.handle_event(transfer())
-        button(tab,'Reject').invoke()
-        _pump(root,lambda:('respond','a'*32,None) in service.calls)
+        _pump(root,lambda:('receive','a'*32) in service.calls)
+        assert ('receive','a'*32) in service.calls
         tab.handle_event(transfer(tid='d'*32,origin='outgoing',status='transferring'))
         button(tab,'Cancel transfer').invoke()
         _pump(root,lambda:('cancel','d'*32) in service.calls)
@@ -163,7 +166,7 @@ def test_image_history_has_room_for_preview_after_window_resize():
     finally: tab.close(); root.destroy()
 
 
-def test_compact_image_offer_scrolls_its_accept_action_into_view():
+def test_compact_image_scrolls_its_save_action_into_view(tmp_path):
     root,tab,_=_make_tab(ImageService())
     try:
         root.geometry('1200x1000'); root.deiconify()
@@ -174,9 +177,9 @@ def test_compact_image_offer_scrolls_its_accept_action_into_view():
         tab.handle_event(_message('1'*32,'Hello Bob. Text and images share this conversation.'))
         tab.handle_event(_message('2'*32,'Received. I can inspect the message evidence when I need it.'))
         root.update()
-        tab.handle_event(transfer()); root.update()
+        tab.handle_event(transfer(status='verified',path=picture(tmp_path))); root.update()
         root.geometry('800x640'); notebook.select(tab.widget); root.update()
-        accept=button(tab,'Accept and save')
+        accept=button(tab,'Save image')
         assert accept.winfo_ismapped()
         assert accept.winfo_rooty() >= tab._history.winfo_rooty()
         assert accept.winfo_rooty()+accept.winfo_height() <= tab._history.winfo_rooty()+tab._history.winfo_height()

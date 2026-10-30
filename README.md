@@ -131,16 +131,21 @@ Update **both peers** with `python -m pip install -r requirements-dev.txt`.
 The image preview dependency is Pillow 12.3.0, compatible with Python 3.10.
 Older SPARC peers do not understand image-transfer records.
 
-In **Chat**, choose **Attach image**, inspect the original preview and SHA-256,
-then choose **Send image**. PNG, JPEG, GIF, and WebP files up to 100 MiB are
+In **Chat**, choose **Attach image** or drop a local image into the conversation
+or message box, inspect the preview, then choose **Send image**. Native file
+dropping uses tkinterdnd2 0.7.0. PNG, JPEG, GIF, and WebP files up to 100 MiB are
 supported; previews are limited to 20 million pixels and show the first frame.
 Your text draft stays intact and text chat remains available during transfer.
 
-The receiver uses **Accept and save** or **Reject** on the incoming attachment.
-Choose a new destination filename; existing files are never overwritten.
-The recovered preview appears in the conversation after authenticated transfer,
-matching whole-file hash/size checks, and file publication. All original file
-bytes are preserved, including animated frames; previews do not transcode files.
+Images arrive automatically in the connected peer's conversation. Received
+images use private temporary storage for the running peer and survive reconnects;
+the latest 100 received images are retained and removed when the peer closes.
+Choose **Save image** to keep a permanent copy, including after disconnecting.
+The preview appears only after authenticated transfer and whole-file hash/size
+checks. All original bytes are preserved, including animated frames; previews
+do not transcode files. Incoming and outgoing messages use distinct bubbles.
+Security details occupy a reserved pane from startup; the checkbox hides it,
+and selecting another message respects that choice.
 
 Select an image entry to inspect its hash, latest chunk's signature, bounded
 Base64 ciphertext, authentication tag, and local encryption/decryption timings.

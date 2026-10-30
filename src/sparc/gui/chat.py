@@ -46,7 +46,8 @@ class ChatTab:
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text='Chat', style='Title.TLabel').grid(row=0, column=0, sticky='w')
         ttk.Label(header, textvariable=self._status, style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=(4, 0))
-        self._security_open = tk.BooleanVar(master=frame, value=False)
+        self._security_open = tk.BooleanVar(master=frame, value=True)
+        self._inspector_width = 340
         self._inspect_button = ttk.Checkbutton(header, text='Security details', variable=self._security_open,
                                                command=self._toggle_inspector)
         self._inspect_button.grid(row=0, column=1, rowspan=2, sticky='e')
@@ -79,7 +80,8 @@ class ChatTab:
         self._inspector.grid(row=0, column=0, sticky="nsew")
         self._inspector.bind('<Configure>', self._sync_inspector_extent, add='+')
         inspector_scroll.grid(row=0, column=1, sticky="ns")
-        body.add(history_frame, stretch='always', minsize=100)
+        body.add(history_frame, stretch='always', minsize=280)
+        body.add(inspector_frame, stretch='never', minsize=300, width=self._inspector_width)
         body.bind('<Configure>', self._schedule_layout, add='+')
 
         compose = ttk.Frame(frame)
@@ -96,8 +98,8 @@ class ChatTab:
         self._send_button.grid(row=0, column=2, sticky='e')
         ttk.Label(actions, text='Ctrl+Enter to send', style='Muted.TLabel').grid(row=0, column=1, sticky='e', padx=12)
         self._send_button.state(["disabled"])
-        self._images = ImageChat(self, compose, actions)
         self._error = tk.StringVar(master=self.widget, value="")
+        self._images = ImageChat(self, compose, actions)
         ttk.Label(frame, textvariable=self._error, wraplength=750, style='Error.TLabel').grid(row=3, column=0, sticky="w", pady=(5, 0))
 
     def _send_shortcut(self, _event=None):
@@ -107,9 +109,11 @@ class ChatTab:
     def _toggle_inspector(self):
         if self._security_open.get():
             if str(self._inspector_frame) not in tuple(map(str, self._body.panes())):
-                self._body.add(self._inspector_frame, stretch='always', minsize=100)
+                self._body.add(self._inspector_frame, stretch='never', minsize=300,
+                               width=self._inspector_width)
             self._schedule_layout()
         elif str(self._inspector_frame) in tuple(map(str, self._body.panes())):
+            self._inspector_width = self._inspector_frame.winfo_width()
             self._body.forget(self._inspector_frame)
 
     def _layout_conversation(self, _event=None):
@@ -117,17 +121,6 @@ class ChatTab:
         if self._closed:
             return
         self._input.configure(height=2 if self.widget.winfo_height() < 700 else 3)
-        if not self._security_open.get():
-            return
-        wide = self._body.winfo_width() >= 1100 or self._body.winfo_height() < 420
-        orient = tk.HORIZONTAL if wide else tk.VERTICAL
-        if str(self._body.cget('orient')) != orient:
-            self._body.configure(orient=orient)
-        extent = self._body.winfo_width() if wide else self._body.winfo_height()
-        if extent > 100 and len(self._body.panes()) == 2:
-            ratio = .58 if wide and extent >= 1100 else .40
-            position = int(extent * ratio)
-            self._body.sash_place(0, position if wide else 0, 0 if wide else position)
 
     def _schedule_layout(self, _event=None):
         if not self._closed and self._layout_id is None:
@@ -252,8 +245,6 @@ class ChatTab:
         selection = self._history.curselection()
         index = selection[0] if selection else -1
         if 0 <= index < len(self._entries):
-            self._security_open.set(True)
-            self._toggle_inspector()
             if self._entries[index].get('kind') == 'image':
                 self._refresh_history()
             else:

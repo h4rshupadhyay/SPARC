@@ -53,3 +53,25 @@ def test_missing_pillow_is_actionable(monkeypatch):
     from sparc.images import inspect_image
     monkeypatch.setitem(sys.modules,'PIL',None)
     with pytest.raises(SparcError,match='Pillow'): inspect_image(io.BytesIO(b''))
+
+
+def test_saved_copy_preserves_all_original_bytes(tmp_path):
+    from sparc.images import save_image_copy
+    source, saved = tmp_path / 'original.gif', tmp_path / 'copy.gif'
+    source.write_bytes(b'original image bytes\x00' * 8000)
+    save_image_copy(source, saved)
+    assert saved.read_bytes() == source.read_bytes()
+    assert not list(tmp_path.glob('.sparc-save-*'))
+
+
+def test_cancelled_save_preserves_existing_destination_and_removes_staging(tmp_path):
+    import threading
+    from sparc.images import save_image_copy
+    source, saved = tmp_path / 'original.png', tmp_path / 'copy.png'
+    source.write_bytes(b'original image')
+    saved.write_bytes(b'existing destination')
+    cancel = threading.Event(); cancel.set()
+    with pytest.raises(SparcError, match='canceled'):
+        save_image_copy(source, saved, cancel=cancel)
+    assert saved.read_bytes() == b'existing destination'
+    assert not list(tmp_path.glob('.sparc-save-*'))

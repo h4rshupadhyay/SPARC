@@ -15,7 +15,7 @@ def test_chat_arrives_with_guidance_and_inspector_is_optional():
         tab.widget.master.pack_configure(fill='both', expand=True)
         root.update()
         assert 'No messages yet' in tab._history.get('1.0', 'end')
-        assert not tab._inspector.winfo_ismapped()
+        assert tab._inspector.winfo_ismapped()
         assert tab._input.winfo_ismapped()
         assert tab._images._attach_button.master is tab._send_button.master
         assert tab._images._attach_button.grid_info()['row'] == tab._send_button.grid_info()['row']
@@ -24,7 +24,7 @@ def test_chat_arrives_with_guidance_and_inspector_is_optional():
 
 
 @pytest.mark.gui
-def test_selecting_message_reveals_security_without_changing_draft_or_receipt():
+def test_selecting_message_updates_reserved_security_and_respects_hide_choice():
     root, tab, _ = _make_tab()
     try:
         root.deiconify(); root.geometry('1000x760')
@@ -33,13 +33,19 @@ def test_selecting_message_reveals_security_without_changing_draft_or_receipt():
         tab._input.insert('1.0', draft)
         tab.handle_event(_message('1'*32, 'Received plaintext', _inspection()))
         root.update()
-        assert not tab._inspector.winfo_ismapped()
+        assert tab._inspector.winfo_ismapped()
+        tab._body.sash_place(0, 530, 0)
+        root.update()
+        divider = tab._body.sash_coord(0)
         tab._history.select(0); root.update()
         assert tab._inspector.winfo_ismapped()
+        assert tab._body.sash_coord(0) == divider
         evidence = tab._inspector.get('1.0', 'end')
         assert 'Received plaintext' in evidence and 'Ciphertext (base64)' in evidence
         assert 'Signature verification: 5.5 µs' in evidence
         tab._inspect_button.invoke(); root.update()
+        assert not tab._inspector.winfo_ismapped()
+        tab._history.select(0); root.update()
         assert not tab._inspector.winfo_ismapped()
         assert tab._input.get('1.0', 'end-1c') == draft
         assert tab._entries[0]['status'] == 'verified'
