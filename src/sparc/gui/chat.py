@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import base64
+from datetime import datetime
 import tkinter as tk
 from tkinter import ttk
+from tkinter.font import nametofont
 
 from .jobs import JobController
 from .scrolling import scrollbar
@@ -26,6 +28,8 @@ class ChatTab:
         self._by_key: dict[tuple[str, str], dict] = {}
         self._early_deliveries: set[str] = set()
         self._active_send: dict | None = None
+        self._selected_entry: dict | None = None
+        self._crypto_expanded = False
         self._notice = ""
         self._status = tk.StringVar(master=self.widget, value="Disconnected")
         self._detail = tk.StringVar(master=self.widget, value="Select a message to inspect its public security details")
@@ -43,7 +47,7 @@ class ChatTab:
         history_frame = ttk.Frame(body)
         history_frame.columnconfigure(0, weight=1)
         history_frame.rowconfigure(0, weight=1)
-        self._history = tk.Listbox(history_frame, height=12, exportselection=False)
+        self._history = tk.Listbox(history_frame, height=6, exportselection=False)
         scroll = scrollbar(history_frame, orient=tk.VERTICAL, command=self._history.yview)
         self._history.configure(yscrollcommand=scroll.set)
         self._history.grid(row=0, column=0, sticky="nsew")
@@ -53,16 +57,44 @@ class ChatTab:
         self._notice_label.grid(row=1, column=0, columnspan=2, sticky="w")
         inspector_frame = ttk.Frame(body)
         inspector_frame.columnconfigure(0, weight=1)
-        inspector_frame.rowconfigure(0, weight=1)
-        self._inspector = tk.Text(inspector_frame, height=13, wrap=tk.WORD, state=tk.DISABLED)
+        inspector_frame.rowconfigure(1, weight=1)
+        inspector_toolbar = ttk.Frame(inspector_frame)
+        inspector_toolbar.grid(row=0, column=0, sticky="w", pady=(0, 6))
+        self._crypto_toggle = ttk.Button(
+            inspector_toolbar, text="Show cryptographic details", command=self._toggle_crypto,
+        )
+        self._crypto_toggle.grid(row=0, column=0, sticky="w")
+        self._crypto_toggle.state(["disabled"])
+        self._inspector = tk.Text(
+            inspector_frame, height=13, wrap=tk.WORD, state=tk.DISABLED,
+            font="TkFixedFont", padx=12, pady=10,
+        )
+        self._heading_font = nametofont("TkDefaultFont", root=frame).copy()
+        self._heading_font.configure(weight="bold")
+        self._inspector.tag_configure("heading", font=self._heading_font, spacing1=8, spacing3=4)
+        self._inspector.tag_configure("message", font="TkDefaultFont", spacing3=8)
         inspector_scroll = scrollbar(
             inspector_frame, orient=tk.VERTICAL, command=self._inspector.yview
         )
         self._inspector.configure(yscrollcommand=inspector_scroll.set)
-        self._inspector.grid(row=0, column=0, sticky="nsew")
-        inspector_scroll.grid(row=0, column=1, sticky="ns")
-        body.add(history_frame, weight=3)
-        body.add(inspector_frame, weight=2)
+        self._inspector.grid(row=1, column=0, sticky="nsew")
+        inspector_scroll.grid(row=1, column=1, sticky="ns")
+        self._copy_button = ttk.Menubutton(inspector_toolbar, text="Copy value")
+        self._copy_menu = tk.Menu(self._copy_button, tearoff=False)
+        self._copy_button.configure(menu=self._copy_menu)
+        for field, label in (
+            ("sha256", "Sender SHA-256"), ("computed_sha256", "Receiver SHA-256"),
+            ("signature", "Signature"), ("nonce", "Nonce"),
+            ("tag", "Tag"), ("ciphertext", "Ciphertext"),
+        ):
+            self._copy_menu.add_command(
+                label=label,
+                command=lambda field=field: self._copy_public_value(field),
+            )
+        self._copy_button.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        self._copy_button.state(["disabled"])
+        body.add(history_frame, weight=1)
+        body.add(inspector_frame, weight=3)
 
         compose = ttk.Frame(frame)
         compose.grid(row=2, column=0, sticky="ew", pady=(8, 0))
@@ -155,6 +187,7 @@ class ChatTab:
                 self._early_deliveries.pop()
 
     def _append(self, entry: dict) -> None:
+        entry["timestamp"] = datetime.now().astimezone()
         self._entries.append(entry)
         if entry.get("key") is not None:
             self._by_key[entry["key"]] = entry
@@ -172,7 +205,9 @@ class ChatTab:
         self._history.delete(0, tk.END)
         self._notice_label.configure(text=self._notice)
         for entry in self._entries:
-            label = f"{entry['origin'].title()} · {entry['status'].title()} · {entry['text'].replace(chr(10), ' ↵ ')}"
+            timestamp = entry.get("timestamp")
+            clock = f"{timestamp:%H:%M:%S} · " if timestamp is not None else ""
+            label = f"{clock}{entry['origin'].title()} · {entry['status'].title()} · {entry['text'].replace(chr(10), ' ↵ ')}"
             self._history.insert(tk.END, label)
         if selected_entry is None and self._entries:
             selected_entry = self._entries[-1]
@@ -188,53 +223,101 @@ class ChatTab:
             self._show_inspection(self._entries[index])
 
     def _show_inspection(self, entry: dict) -> None:
+        self._selected_entry = entry
         inspection = entry.get("inspection")
         sequence = entry.get("sequence")
         if sequence is None and inspection is not None:
             sequence = getattr(inspection, "sequence", None)
-        rows = [
-            f"Origin: {entry['origin']}",
-            f"Status: {entry['status']}",
-        ]
+        timestamp = entry.get("timestamp")
+        if timestamp is not None:
+            offset = timestamp.strftime("%z")
+            timestamp_text = f"{timestamp:%Y-%m-%d %H:%M:%S %Z} (UTC{offset[:3]}:{offset[3:]})"
+        else:
+            timestamp_text = "unavailable"
+        sections = [("MESSAGE DETAILS", [
+            f"Message ID: {entry.get('message_id') or 'pending'}",
+            f"Direction: {entry.get('direction') if entry.get('direction') is not None else 'pending'}",
+            f"Sequence: {sequence if sequence is not None else 'pending'}",
+        ])]
+        if inspection is not None:
+            size = getattr(inspection, "plaintext_bytes", None)
+            size_text = f"{size} bytes" if size is not None else "unavailable"
+            sections[0][1].append(f"Plaintext payload size: {size_text}")
         timings = getattr(inspection, "timings", None)
         if entry["origin"] == "outgoing":
             fields = (("sign_ns", "Signature generation"), ("hash_ns", "Hashing"),
                       ("encrypt_ns", "Encryption"))
-            rows.append("Local sender timings:")
+            timing_heading = "LOCAL SENDER TIMINGS"
         else:
             fields = (("verify_ns", "Signature verification"), ("hash_ns", "Hash recomputation"),
                       ("decrypt_ns", "Decryption"))
-            rows.append("Local receiver timings:")
+            timing_heading = "LOCAL RECEIVER TIMINGS"
+        timing_rows = []
         for field, label in fields:
             value = getattr(timings, field, None)
             measured = f"{value / 1000:g} µs" if value is not None else "unavailable"
-            rows.append(f"  {label}: {measured}")
-        rows.extend([
-            f"Message ID: {entry.get('message_id') or 'pending'}",
-            f"Direction: {entry.get('direction')}",
-            f"Sequence: {sequence}",
-            f"Text: {entry['text']}",
-        ])
+            timing_rows.append(f"{label}: {measured}")
+        sections.insert(0, (timing_heading, timing_rows))
         if inspection is not None:
             computed = getattr(inspection, "computed_sha256", None)
             digest = getattr(inspection, "sha256", None)
-            rows.extend([
-                f"Sender SHA-256: {digest or 'unavailable'}",
-                f"Receiver SHA-256: {computed or 'unavailable'}",
-                f"Hash: {'match' if digest is not None and computed is not None and digest == computed else 'mismatch' if digest is not None and computed is not None else 'unavailable'}",
-                f"Plaintext size: {getattr(inspection, 'plaintext_bytes', None)} bytes",
-                f"Signature (base64): {self._b64(getattr(inspection, 'signature', None))}",
-                f"Nonce (base64): {self._b64(getattr(inspection, 'nonce', None))}",
-                f"Tag (base64): {self._b64(getattr(inspection, 'tag', None))}",
-                f"Ciphertext (base64): {self._b64(getattr(inspection, 'ciphertext', None))}",
-            ])
+            missing = "not available locally" if entry["origin"] == "outgoing" else "unavailable"
+            comparison = "match" if digest == computed else "mismatch"
+            if digest is None or computed is None:
+                comparison = missing
+            sections.append(("HASH DETAILS", [
+                f"Sender SHA-256: {self._hash_preview(digest) or missing}",
+                f"Receiver SHA-256: {self._hash_preview(computed) or missing}",
+                f"Hash comparison: {comparison}",
+            ]))
+            if self._crypto_expanded:
+                sections.append(("CRYPTOGRAPHIC DETAILS", [
+                    f"Sender SHA-256 (full): {digest or missing}",
+                    f"Receiver SHA-256 (full): {computed or missing}",
+                    f"Signature (base64): {self._b64(getattr(inspection, 'signature', None))}",
+                    f"Nonce (base64): {self._b64(getattr(inspection, 'nonce', None))}",
+                    f"Tag (base64): {self._b64(getattr(inspection, 'tag', None))}",
+                    f"Ciphertext (base64): {self._b64(getattr(inspection, 'ciphertext', None))}",
+                ]))
+        self._crypto_toggle.state(["!disabled"] if inspection is not None else ["disabled"])
+        self._crypto_toggle.configure(text=f"{'Hide' if self._crypto_expanded else 'Show'} cryptographic details")
+        self._copy_button.state(["!disabled"] if inspection is not None else ["disabled"])
+        for index, field in enumerate((
+            "sha256", "computed_sha256", "signature", "nonce", "tag", "ciphertext",
+        )):
+            state = tk.NORMAL if getattr(inspection, field, None) is not None else tk.DISABLED
+            self._copy_menu.entryconfigure(index, state=state)
         self._inspector.configure(state=tk.NORMAL)
         self._inspector.delete("1.0", tk.END)
-        self._inspector.insert("1.0", "\n".join(rows))
+        self._inspector.insert(tk.END, f"{entry['origin'].title()} · {entry['status'].title()}\n", "heading")
+        self._inspector.insert(tk.END, entry["text"] + "\n", "message")
+        self._inspector.insert(tk.END, f"Local timestamp: {timestamp_text}\n")
+        for heading, rows in sections:
+            self._inspector.insert(tk.END, f"{heading}\n", "heading")
+            self._inspector.insert(tk.END, "\n".join(rows) + "\n")
         self._inspector.configure(state=tk.DISABLED)
         # Include the last wrapped ciphertext line in Tk's scroll extent.
         self._inspector.count("1.0", "end", "update", "ypixels")
         self._inspector.yview_moveto(0.0)
+
+    @staticmethod
+    def _hash_preview(value: str | None) -> str | None:
+        return f"{value[:12]}…{value[-12:]}" if value and len(value) > 24 else value
+
+    def _toggle_crypto(self) -> None:
+        if not self._closed and self._selected_entry is not None:
+            self._crypto_expanded = not self._crypto_expanded
+            self._show_inspection(self._selected_entry)
+
+    def _copy_public_value(self, field: str) -> None:
+        if self._closed or self._selected_entry is None:
+            return
+        value = getattr(self._selected_entry.get("inspection"), field, None)
+        if value is None:
+            return
+        text = self._b64(value) if isinstance(value, bytes) else str(value)
+        self.widget.clipboard_clear()
+        self.widget.clipboard_append(text)
 
     @staticmethod
     def _b64(value) -> str:
@@ -315,6 +398,9 @@ class ChatTab:
         self._entries.clear()
         self._by_key.clear()
         self._active_send = None
+        self._selected_entry = None
+        self._crypto_toggle.state(["disabled"])
+        self._copy_button.state(["disabled"])
         self._input.delete("1.0", tk.END)
         self._history.delete(0, tk.END)
         self._inspector.configure(state=tk.NORMAL)

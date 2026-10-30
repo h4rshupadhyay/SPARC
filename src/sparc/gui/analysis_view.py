@@ -29,7 +29,7 @@ from .scrolling import CanvasScroller, scrollbar
 
 
 _ALLOWED_SIZES = (64, 1024, 16384)
-_RESULT_ROWS = 500
+_OPERATION_ROWS = 500
 _RESOURCE_ROWS = 100
 _HASH_MODES = {
     "Collision resistance": "collision",
@@ -226,8 +226,7 @@ class AnalysisTab:
         hashing.columnconfigure(0, weight=1)
         ttk.Label(
             hashing,
-            text=("Synthetic searches compare full 256-bit SHA-256 digests. "
-                  "No match within the attempt limit is a bounded observation, not proof of security."),
+            text="Synthetic searches compare full 256-bit SHA-256 digests.",
             wraplength=650,
         ).grid(row=0, column=0, sticky="ew")
         hash_fields = ttk.Frame(hashing)
@@ -835,9 +834,6 @@ class AnalysisTab:
         bit_operand = "plaintext block" if trial.mode == "plaintext" else "key"
         rows = [
             f"Mode: {trial.mode} · case {trial.case_index} · bit index {trial.bit_index}",
-            "Ideal-model expectations: 50% of output bits, 99.609375% of output bytes, and 93.75% of lowercase hex positions change. These are expectations, not pass/fail thresholds.",
-            "A plaintext-bit flip illustrates diffusion; a key-bit flip illustrates confusion.",
-            "Formulas: changed bits / 128 × 100; changed bytes / 16 × 100; changed lowercase hex positions / 32 × 100.",
             f"Observed: bits {trial.difference.bit_percent:g}% · bytes {trial.difference.byte_percent:g}% · hex {trial.difference.hex_percent:g}%.",
             f"Original synthetic key: {trial.key.hex()}",
             f"Original synthetic block: {trial.block.hex()}",
@@ -868,32 +864,28 @@ class AnalysisTab:
             label = {"sign": "Signature generation", "verify": "Signature verification"}.get(operation)
             divisor = 1000 if label else 1
             unit = "µs" if label else "ns"
-            mean = summary.get("mean_ns")
+            median = summary.get("median_ns")
             p95 = summary.get("p95_ns")
+            details = [
+                f"median · n={summary.get('count')} · "
+                f"p95 {self._display(p95 / divisor if p95 is not None else None)} {unit}"
+            ]
+            if result.metadata.get("test_type") == "local_cryptographic":
+                details.append(f"throughput {self._display(summary.get('throughput_bytes_s'))} B/s")
+                details.append(f"characters {self._display(summary.get('characters_s'))}/s")
+            elif operation == "network_round_trip":
+                details.append(f"goodput {self._display(summary.get('goodput_bytes_s'))} B/s")
+                details.append(f"characters {self._display(summary.get('characters_s'))}/s")
             self._add_row(
                 summary.get("payload_bytes"), f"{label} ({unit})" if label else operation,
-                mean / divisor if mean is not None else None,
-                f"n={summary.get('count')} · p95 {self._display(p95 / divisor if p95 is not None else None)} {unit} · "
-                f"goodput {self._display(summary.get('goodput_bytes_s'))} B/s · "
-                f"characters {self._display(summary.get('characters_s'))}/s",
+                median / divisor if median is not None else None,
+                " · ".join(details),
             )
-        for sample in result.samples[:_RESULT_ROWS]:
-            operation = sample.get("operation")
-            label = {"sign": "Signature generation", "verify": "Signature verification"}.get(operation)
-            elapsed = sample.get("elapsed_ns")
-            details = []
-            for key in ("message_id", "characters", "frame_bytes", "error"):
-                if sample.get(key) is not None:
-                    details.append(f"{key}={sample[key]}")
-            self._add_row(
-                sample.get("payload_bytes"), f"{label} (µs)" if label else operation,
-                elapsed / 1000 if label and elapsed is not None else elapsed,
-                f"{'success' if sample.get('success') else 'failed'} · " + " · ".join(details),
-            )
-        omitted = max(0, len(result.samples) - _RESULT_ROWS)
         self._details_text(
-            f"{len(result.samples)} measured samples; showing at most {_RESULT_ROWS}. "
-            f"{omitted} rows omitted from this view. Complete: {result.complete}."
+            f"{len(result.samples)} measured samples; showing {len(result.summary)} median summaries "
+            "by workload and operation. Median limits the influence of timing outliers. "
+            "Save CSV… exports all measured samples and full statistics. "
+            f"Complete: {result.complete}."
         )
 
     def _render_resources(self, result: ResourceResult) -> None:
@@ -1057,13 +1049,13 @@ class AnalysisTab:
         samples = self._operation_metrics.result().samples
         for row in self._metrics.get_children(""):
             self._metrics.delete(row)
-        for sample in samples[-_RESULT_ROWS:]:
+        for sample in samples[-_OPERATION_ROWS:]:
             self._metrics.insert("", tk.END, values=(
                 sample.get("operation", ""),
                 self._display(sample.get("elapsed_ns")),
                 "success" if sample.get("success") else "failed",
-                self._display(sample.get("encoded_bytes")),
-                self._display(sample.get("frame_bytes")),
+                "—" if sample.get("encoded_bytes") is None else self._display(sample["encoded_bytes"]),
+                "—" if sample.get("frame_bytes") is None else self._display(sample["frame_bytes"]),
                 repr(sample.get("context", {})),
             ))
 

@@ -104,4 +104,3 @@ def test_hash_csv_retains_full_target_units_and_bounded_scope(tmp_path):
     assert int(row["elapsed_ns"]) == result.elapsed_ns
     assert row["input_b_hex"] == ""
     assert hashlib.sha256(bytes.fromhex(row["input_a_hex"])).hexdigest() == row["target_digest"]
-    assert "does not establish" in row["interpretation"]

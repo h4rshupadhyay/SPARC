@@ -46,7 +46,7 @@ class HashSearchResult:
 
     @property
     def interpretation(self) -> str:
-        return "Full SHA-256 bounded search. A bounded search does not establish cryptographic resistance."
+        return "Full SHA-256 search over synthetic inputs."
 
 
 def run_hash_search(

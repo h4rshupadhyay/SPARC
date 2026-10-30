@@ -121,6 +121,17 @@ generation on outgoing messages and verification on incoming messages, in
 microseconds. Missing timings are labeled unavailable. These are local
 operation durations; sender timings are not transmitted to the receiver.
 
+History rows show the local message time; the inspector includes the full date,
+timezone, and UTC offset. The timestamp is recorded when you submit an outgoing
+message or the app first handles an incoming message, and stays unchanged by
+delivery updates. These timestamps use the local device clock.
+
+The inspector groups message metadata, timings, and hash results. Expand
+**Show cryptographic details** to see the complete hashes, signature, nonce,
+tag, and ciphertext. **Copy value** copies a selected complete value, including
+values abbreviated in the summary. Receiver hashes missing from an outgoing
+inspection are labeled **not available locally**.
+
 ## Standalone analysis
 
 Run synthetic sensitivity trials and local benchmarks without a connected peer
@@ -141,13 +152,17 @@ second-preimage resistance, a seed, and an attempt limit.
 All searches compare complete 256-bit SHA-256 digests. Results show attempts,
 elapsed time, and any matching synthetic inputs
 with their full digests. **Cancel** retains incomplete hashing results;
-**Save CSV…** exports the result and its scope. No match is expected in these
-finite searches; it does not establish SHA-256 security. Definitions
+**Save CSV…** exports the result and its scope. Definitions
 follow [NIST's hash-function guidance](https://csrc.nist.gov/Projects/hash-functions).
 
 **Generate specimen** also displays Ed25519 signature generation time, excluding
 key generation and encoding. Local benchmark signature rows display
 microseconds; CSV timing fields retain nanoseconds.
+
+Benchmark tables show one median duration per workload and operation, with
+sample counts and p95 for context. Local rates show primitive throughput and
+synthetic ASCII characters per second; network goodput uses confirmed receipts.
+**Save CSV…** retains every measured sample plus mean, median, p95, and rates.
 
 ## Demonstrations and evidence
 

@@ -220,7 +220,7 @@ def test_network_disabled_until_connected():
 
 
 @pytest.mark.gui
-def test_single_trial_displays_operands_formulas_and_observed_values():
+def test_single_trial_displays_operands_and_observed_values():
     from sparc.analysis.sensitivity import sensitivity_trial
 
     root, tab = _make_tab()
@@ -244,9 +244,7 @@ def test_single_trial_displays_operands_formulas_and_observed_values():
     assert expected.baseline_ciphertext.hex() in visible
     assert expected.modified_ciphertext.hex() in visible
     assert "plaintext" in visible and "127" in visible
-    assert "expected" in visible or "expectation" in visible
     assert "observed" in visible
-    assert "50%" in visible
     assert "bit" in visible and "128" in visible
     assert "byte" in visible and "16" in visible
     assert "hex" in visible and "32" in visible
@@ -377,7 +375,7 @@ def test_local_benchmark_labels_signature_generation_in_microseconds():
         tab._job_result("result", BenchmarkResult(
             metadata={}, samples=[], summary=[{
                 "operation": "sign", "payload_bytes": 64, "count": 2,
-                "mean_ns": 2500, "p95_ns": 4000,
+                "mean_ns": 3000, "median_ns": 2500, "p95_ns": 4000,
             }], complete=True,
         ))
         values = [tab._results.item(item, "values") for item in tab._results.get_children()]
@@ -411,7 +409,6 @@ def test_hash_search_gui_runs_and_exports_full_digest_searches(monkeypatch, tmp_
         assert "no match within" in visible
         assert "full sha-256" in visible
         assert "shortened" not in visible
-        assert "does not establish" in visible
         assert "attempts" in visible and "elapsed" in visible
         result = tab._last_result
         assert result.mode == mode

@@ -85,12 +85,14 @@ def _metadata(run_id: str, sizes: tuple[int, ...], warmups: int, repetitions: in
             "payload_bytes": "bytes",
             "elapsed_ns": "nanoseconds",
             "throughput_bytes_s": "bytes per second",
+            "characters_s": "synthetic ASCII characters per second",
         },
         "definitions": {
             "hash": "SHA-256 digest of the ASCII plaintext; digest finalization is timed",
             "sign_verify": "Ed25519 over an approximately constant-length C2 message context and signing projection",
             "encrypt_decrypt": "AES-256-GCM over the serialized signed envelope, which grows with plaintext size",
             "throughput": "plaintext bytes multiplied by successful call count divided by summed primitive durations",
+            "characters_s": "synthetic ASCII characters multiplied by successful call count divided by summed primitive durations; each payload character is one byte",
             "timing_scope": "Includes perf_counter_ns timer overhead; excludes key generation, encoding, nonce/AAD construction, and I/O",
             "audit": "Local primitive measurements do not include audit work",
         },
@@ -252,7 +254,12 @@ def run_local_benchmarks(
     for size in sizes:
         for operation in _OPERATIONS:
             stats = summarize(success_durations[(operation, size)], size)
-            summaries.append({"operation": operation, "payload_bytes": size, **asdict(stats)})
+            summaries.append({
+                "operation": operation,
+                "payload_bytes": size,
+                **asdict(stats),
+                "characters_s": stats.throughput_bytes_s,
+            })
 
     if canceled():
         complete = False
