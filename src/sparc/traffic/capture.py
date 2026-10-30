@@ -261,6 +261,7 @@ def iter_capture(
     def producer() -> None:
         loop: asyncio.AbstractEventLoop | None = None
         capture: Any = None
+        decoder_process: Any = None
         reader: asyncio.Task[Any] | None = None
         watcher: asyncio.Task[Any] | None = None
         reader_settled = True
@@ -276,6 +277,27 @@ def iter_capture(
                     reader.cancel()
                     return
                 await asyncio.sleep(_POLL_SECONDS)
+
+        async def confirm_decoder_exit() -> None:
+            """Stdout EOF alone does not establish a successful child exit."""
+            nonlocal status
+            task = loop.create_task(decoder_process.wait())
+            deadline = loop.time() + _CLOSE_SECONDS
+            try:
+                while not task.done():
+                    if stopped():
+                        status = "stopped"
+                        return
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        raise SparcError("capture_cleanup_failed", _CLEANUP_MESSAGE)
+                    await asyncio.wait({task}, timeout=min(_POLL_SECONDS, remaining))
+                if task.result() != 0:
+                    raise _capture_error()
+            finally:
+                if not task.done():
+                    task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
 
         async def supervise() -> None:
             nonlocal reader, watcher, reader_settled, status, failure
@@ -305,6 +327,8 @@ def iter_capture(
             watcher = loop.create_task(watch_reader())
             try:
                 await reader
+                if decoder_process is not None and not stopped():
+                    await confirm_decoder_exit()
             except asyncio.CancelledError:
                 if stopped():
                     status = "stopped"
@@ -363,6 +387,15 @@ def iter_capture(
                     status = "error"
                 else:
                     class OwnedFileCapture(FileCapture):
+                        async def _get_tshark_process(self, packet_count=None, stdin=None):
+                            # PyShark 0.6 exposes no public child-exit result.
+                            # Keep this pinned compatibility seam limited to
+                            # retaining its returned asyncio Process; parsing
+                            # and process creation remain PyShark-owned.
+                            nonlocal decoder_process
+                            decoder_process = await super()._get_tshark_process(packet_count, stdin)
+                            return decoder_process
+
                         def __del__(self):
                             # This supervisor alone owns close_async. PyShark's
                             # finalizer otherwise retries failed cleanup against
