@@ -25,6 +25,7 @@ from ..analysis.specimen import make_timed_specimen, verify_specimen
 from ..models import ServiceEvent
 from ..storage import atomic_write
 from .jobs import JobController
+from .plot_view import PlotView
 
 
 _ALLOWED_SIZES = (64, 1024, 16384)
@@ -304,7 +305,9 @@ class AnalysisTab:
         self._details = tk.Text(result_area, height=11, wrap=tk.WORD, state=tk.DISABLED)
         self._details.grid(row=3, column=0, sticky="ew", pady=(6, 0))
         metrics = ttk.LabelFrame(self._content, text="Core operation metrics", padding=8)
-        metrics.grid(row=7, column=0, sticky="ew", pady=(8, 0))
+        self._plots = PlotView(self._content)
+        self._plots.grid(row=7, column=0, sticky="ew", pady=(8, 0))
+        metrics.grid(row=8, column=0, sticky="ew", pady=(8, 0))
         metrics.columnconfigure(0, weight=1)
         self._metrics = ttk.Treeview(
             metrics,
@@ -740,6 +743,7 @@ class AnalysisTab:
             )
             return
         if operation == "specimen_verify" and isinstance(value, bool):
+            self._plots.show(None)
             self._status.set("Specimen signature is valid" if value else "Specimen signature rejected")
             self._details_text(
                 "The public key, signed bytes, and signature match."
@@ -750,6 +754,7 @@ class AnalysisTab:
             self._status.set(f"CSV saved: {value}")
             return
         if operation == "audit_verify":
+            self._plots.show(None)
             try:
                 event = ServiceEvent("operation_metrics", {
                     "operation": "audit_verify",
@@ -808,7 +813,10 @@ class AnalysisTab:
             self._last_result_kind = None
             self._refresh_controls()
 
+        self._plots.show(value)
+
     def _clear_results(self) -> None:
+        self._plots.show(None)
         for row in self._results.get_children(""):
             self._results.delete(row)
         self._details_text("")
@@ -837,12 +845,13 @@ class AnalysisTab:
     def _render_trial(self, trial: Trial) -> None:
         self._clear_results()
         self._add_row("Ciphertext", "Bits changed", f"{(trial.difference.bit_percent * 128 / 100):g} / 128", f"Observed {trial.difference.bit_percent:g}%")
-        self._add_row("Ciphertext", "Bytes changed", f"{(trial.difference.byte_percent * 16 / 100):g} / 16", f"Observed {trial.difference.byte_percent:g}%")
+        self._add_row("Ciphertext", "Byte change (character-level proxy)", f"{(trial.difference.byte_percent * 16 / 100):g} / 16", f"Observed {trial.difference.byte_percent:g}%")
         self._add_row("Ciphertext", "Hex positions changed", f"{(trial.difference.hex_percent * 32 / 100):g} / 32", f"Observed {trial.difference.hex_percent:g}%")
         bit_operand = "plaintext block" if trial.mode == "plaintext" else "key"
         rows = [
             f"Mode: {trial.mode} · case {trial.case_index} · bit index {trial.bit_index}",
             "Ideal-model expectations: 50% of output bits, 99.609375% of output bytes, and 93.75% of lowercase hex positions change. These are expectations, not pass/fail thresholds.",
+            "Coursework character-level target: 100%. Ciphertext bytes are the character-level proxy; binary ciphertext is not Unicode text.",
             "A plaintext-bit flip illustrates diffusion; a key-bit flip illustrates confusion.",
             "Formulas: changed bits / 128 × 100; changed bytes / 16 × 100; changed lowercase hex positions / 32 × 100.",
             f"Observed: bits {trial.difference.bit_percent:g}% · bytes {trial.difference.byte_percent:g}% · hex {trial.difference.hex_percent:g}%.",
@@ -1095,6 +1104,7 @@ class AnalysisTab:
         if self._hash_cancel is not None:
             self._hash_cancel.set()
         self._job.close()
+        self._plots.close()
 
 
 def _children(widget):

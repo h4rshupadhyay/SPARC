@@ -147,7 +147,7 @@ Chat owns chronological mixed entries and routes state/image events.
 
 **Files:** Create `analysis/plots.py`, `gui/plot_view.py`;
 modify `gui/analysis_view.py`, `analysis/export.py`;
-test `tests/unit/test_analysis_plots.py`, `tests/gui/test_analysis_plots.py`.
+test `tests/unit/test_analysis_plots.py`, `tests/gui/test_analysis_charts.py`.
 
 **Interfaces:** Immutable `Plot` and `Series` records; `benchmark_plots(result,
 operations)->list[Plot]`, `sensitivity_plots(result)->list[Plot]`,
