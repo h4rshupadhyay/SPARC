@@ -11,6 +11,7 @@ import socket
 import threading
 import time
 from dataclasses import dataclass, replace
+from collections import OrderedDict
 from pathlib import Path
 
 from ..audit import AuditLog, AuditReport
@@ -33,6 +34,8 @@ from ..models import (
 from ..protocol.handshake import perform_handshake
 from ..protocol.handshake_types import EstablishedSession, PeerCandidate
 from ..protocol.messages import prepare_text, signing_projection
+from ..protocol.files import FILE_KINDS
+from .transfers import TransferManager
 from .pairing import PairingRequests
 from .policy import ConnectionLimiter, ReconnectPolicy
 from .receipts import PendingMessage, ReceiptLedger
@@ -55,6 +58,7 @@ class _ServiceEventQueue(queue.Queue[ServiceEvent]):
     def __init__(self, maxsize: int = 0) -> None:
         super().__init__(maxsize)
         self._generation = 0
+        self._pending_images = OrderedDict()
         self._pending_terminal: tuple[ServiceEvent, int] | None = None
 
     def _discard_pending_locked(self) -> None:
@@ -70,6 +74,8 @@ class _ServiceEventQueue(queue.Queue[ServiceEvent]):
             if generation <= self._generation:
                 return
             self._generation = generation
+            self.unfinished_tasks -= len(self._pending_images)
+            self._pending_images.clear()
             if (self._pending_terminal is not None
                     and self._pending_terminal[1] < generation):
                 self._discard_pending_locked()
@@ -108,6 +114,25 @@ class _ServiceEventQueue(queue.Queue[ServiceEvent]):
             self._pending_terminal = (safe_event, generation)
             self.not_empty.notify()
 
+    def publish_image(self, event: ServiceEvent, generation: int) -> None:
+        """Bounded fallback retains latest transfer state without stalling sockets."""
+        with self.not_empty:
+            if generation != self._generation:
+                return
+            tid = event.data['transfer_id']
+            if tid in self._pending_images:
+                self._pending_images[tid] = event
+            elif self._qsize() < self.maxsize:
+                self._put(event)
+                self.unfinished_tasks += 1
+            else:
+                if len(self._pending_images) >= 100:
+                    self._pending_images.popitem(last=False)
+                    self.unfinished_tasks -= 1
+                self._pending_images[tid] = event
+                self.unfinished_tasks += 1
+            self.not_empty.notify()
+
     def get(self, block: bool = True, timeout: float | None = None) -> ServiceEvent:
         if not block:
             deadline = None
@@ -128,9 +153,11 @@ class _ServiceEventQueue(queue.Queue[ServiceEvent]):
                     item, _generation = self._pending_terminal
                     self._pending_terminal = None
                     return item
+                if self._pending_images:
+                    return self._pending_images.popitem(last=False)[1]
                 raise queue.Empty
 
-            while not self._qsize() and self._pending_terminal is None:
+            while not self._qsize() and self._pending_terminal is None and not self._pending_images:
                 if deadline is None:
                     self.not_empty.wait()
                 else:
@@ -142,9 +169,11 @@ class _ServiceEventQueue(queue.Queue[ServiceEvent]):
                 item = self._get()
                 self.not_full.notify()
                 return item
-            item, _generation = self._pending_terminal
-            self._pending_terminal = None
-            return item
+            if self._pending_terminal is not None:
+                item, _generation = self._pending_terminal
+                self._pending_terminal = None
+                return item
+            return self._pending_images.popitem(last=False)[1]
 
     def get_nowait(self) -> ServiceEvent:
         return self.get(block=False)
@@ -691,6 +720,23 @@ class PeerService:
         with self._state_lock:
             generation = self._generation
         self._pairings.respond(request_id, approved, generation)
+
+    def _image_manager(self):
+        with self._state_lock:
+            attempt = self._slot
+            if (self._closed or self._state != 'connected' or attempt is None
+                    or attempt.session is None or attempt.cancel.is_set()):
+                raise SparcError('not_connected', 'Connect to a trusted peer before sending images')
+            return attempt.session.transfers
+
+    def send_image(self, path) -> str:
+        return self._image_manager().send_image(path)
+
+    def respond_to_image(self, transfer_id: str, destination: Path | None) -> None:
+        self._image_manager().respond(transfer_id, destination)
+
+    def cancel_image(self, transfer_id: str) -> None:
+        self._image_manager().cancel(transfer_id)
 
     def disconnect(self) -> None:
         """Cancel the current attempt or established session, retaining the listener."""
@@ -1334,6 +1380,7 @@ class PeerService:
                     or attempt.cancel.is_set()):
                 return
             expired = self._receipts.expire(time.perf_counter_ns())
+        session.transfers.poll()
         self._flush_rate_limit_audit()
         if expired:
             session._terminate(
@@ -1368,6 +1415,14 @@ class PeerService:
             cancel=attempt.cancel,
         )
         owner["session"] = session
+        def emit_image(event):
+            with self._state_lock:
+                if self._slot is attempt and attempt.session is session and self._generation == attempt.generation:
+                    self.events.publish_image(event, attempt.generation)
+        session.transfers = TransferManager(
+            session, emit_image, lambda kind, metadata: self._durable_append(attempt, kind, metadata),
+            established.peer.fingerprint,
+        )
         return session
 
     def _emit_session_diagnostic(self, attempt: _Attempt, session: ActiveSession,
@@ -1415,7 +1470,7 @@ class PeerService:
                         established: EstablishedSession, record) -> None:
         payload = record.payload
         kind = payload.get("kind")
-        if kind not in {"chat", "benchmark", "ack"}:
+        if kind not in {"chat", "benchmark", "ack"} | FILE_KINDS:
             return
         with self._state_lock:
             if (self._closed or self._slot is not attempt or attempt.session is not session
@@ -1432,6 +1487,10 @@ class PeerService:
             "projection": signing_projection(payload),
             "signature": payload["signature"],
         }
+
+        if kind in FILE_KINDS:
+            session.transfers.handle(record, evidence)
+            return
 
         if kind == "ack":
             pending = self._receipts.validate_ack(payload["message_id"], payload["sha256"])
@@ -1811,6 +1870,13 @@ class PeerService:
             )
 
     def _on_written(self, attempt: _Attempt, payload: dict, protected: ProtectedRecord) -> None:
+        if payload.get('kind') in FILE_KINDS:
+            with self._state_lock:
+                if self._slot is not attempt or attempt.session is None or attempt.cancel.is_set():
+                    return
+                manager = attempt.session.transfers
+            manager.written(payload, protected)
+            return
         message_id = payload.get("message_id")
         if payload.get("kind") not in {"chat", "benchmark"} or not isinstance(message_id, str):
             return
