@@ -1,0 +1,15 @@
+{
+  "audited_commit": "9962ba4",
+  "platform": "Linux/X11",
+  "viewports": [[800, 640], [1200, 900]],
+  "accepted_screenshots": 22,
+  "native_callback_errors": [],
+  "regression": {"passed": 1273, "skipped": 9, "seconds": 223.81, "skip_scope": "native Windows semantics"},
+  "dependency_check": "No broken requirements found",
+  "application_code_changed": false,
+  "confirmed_diagnostics": {
+    "two_peer_history": "Different authenticated peers share one unlabeled conversation under the current peer endpoint",
+    "trust_list": {"backend_records": 2, "visible_records": 0},
+    "signature_artifact_boundary": {"signed_bytes": 65537, "saved_json_bytes": 131569, "save_succeeded": true, "reload_error": "Invalid signed_bytes in signature artifact"}
+  }
+}

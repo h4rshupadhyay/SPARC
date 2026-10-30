@@ -97,9 +97,13 @@ class _FakeCapture:
 
 
 def _install_pyshark(monkeypatch, fake):
+    class FileCapture:
+        def __new__(cls, **options):
+            return fake(**options)
+
     package = types.ModuleType("pyshark")
     package.__path__ = []
-    package.FileCapture = fake
+    package.FileCapture = FileCapture
     capture_package = types.ModuleType("pyshark.capture")
     capture_package.__path__ = []
     capture_package.FileCapture = fake
@@ -112,6 +116,107 @@ def _install_pyshark(monkeypatch, fake):
     monkeypatch.setitem(sys.modules, "pyshark", package)
     monkeypatch.setitem(sys.modules, "pyshark.capture", capture_package)
     monkeypatch.setitem(sys.modules, "pyshark.capture.capture", capture_module)
+
+
+def test_failed_decoder_never_retries_cleanup_from_finalizer_after_loop_close(monkeypatch):
+    finalizers = []
+    loops = []
+
+    class FailedCapture:
+        def __init__(self, **options):
+            self.eventloop = options["eventloop"]
+            loops.append(self.eventloop)
+
+        async def packets_from_tshark(self, callback, **options):
+            raise RuntimeError("malformed source")
+
+        async def close_async(self):
+            raise RuntimeError("decoder cleanup uncertainty")
+
+        def __del__(self):
+            finalizers.append(self.eventloop.is_closed())
+
+    _install_pyshark(monkeypatch, lambda **options: FailedCapture(**options))
+    monkeypatch.setattr(sys.modules["pyshark"], "FileCapture", FailedCapture)
+    _domain_error(lambda: list(_adapter()(Path("source"), Path("tool"), threading.Event())),
+                  "capture_cleanup_failed")
+    gc.collect()
+    assert loops and loops[0].is_closed()
+    assert finalizers == []
+
+
+@pytest.mark.parametrize('exit_code', [0, 2])
+def test_stdout_eof_requires_natural_decoder_exit_before_cleanup(monkeypatch, exit_code):
+    """PyShark can see stdout EOF before asyncio receives the child exit code."""
+    observations = []
+
+    class Process:
+        returncode = None
+        async def wait(self):
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            self.returncode = exit_code
+            observations.append(('exit', exit_code))
+            return exit_code
+
+    child = Process()
+
+    class NativeShapedCapture:
+        def __init__(self, **options):
+            pass
+
+        async def _get_tshark_process(self, packet_count=None, stdin=None):
+            return child
+
+        async def packets_from_tshark(self, callback, **options):
+            await self._get_tshark_process()
+            # EOF arrives without packet callbacks or a settled process status.
+
+        async def close_async(self):
+            observations.append(('cleanup', child.returncode))
+            if child.returncode is None:
+                child.returncode = -9
+
+    _install_pyshark(monkeypatch, lambda **options: None)
+    monkeypatch.setattr(sys.modules['pyshark'], 'FileCapture', NativeShapedCapture)
+    consume = lambda: list(_adapter()(Path('source'), Path('tool'), threading.Event()))
+    if exit_code:
+        _domain_error(consume, 'capture_parse_failed')
+    else:
+        assert consume() == []
+    assert observations == [('exit', exit_code), ('cleanup', exit_code)]
+
+
+@pytest.mark.parametrize('canceled', [False, True])
+def test_decoder_exit_confirmation_is_bounded_and_cancellable(monkeypatch, canceled):
+    from sparc.traffic import capture as module
+    monkeypatch.setattr(module, '_CLOSE_SECONDS', .1)
+    cancel = threading.Event()
+    closed = []
+
+    class Process:
+        async def wait(self):
+            if canceled:
+                cancel.set()
+            await asyncio.Event().wait()
+
+    class Capture:
+        def __init__(self, **options):
+            pass
+        async def _get_tshark_process(self, packet_count=None, stdin=None):
+            return Process()
+        async def packets_from_tshark(self, callback, **options):
+            await self._get_tshark_process()
+        async def close_async(self):
+            closed.append(True)
+
+    _install_pyshark(monkeypatch, lambda **options: None)
+    monkeypatch.setattr(sys.modules['pyshark'], 'FileCapture', Capture)
+    started = time.monotonic()
+    _domain_error(lambda: list(_adapter()(Path('source'), Path('tool'), cancel)),
+                  'capture_cancelled' if canceled else 'capture_cleanup_failed')
+    assert closed == [True]
+    assert time.monotonic() - started < 1
 
 
 def _adapter():

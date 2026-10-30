@@ -13,6 +13,7 @@ import psutil
 from ..models import Endpoint
 from .jobs import JobController
 from .scrolling import CanvasScroller, scrollbar
+from .appearance import install, SURFACE
 
 
 _DEFAULT_PORT = 47655
@@ -23,7 +24,8 @@ class ConnectionTab:
 
     def __init__(self, parent: ttk.Notebook, service) -> None:
         self.service = service
-        self.widget = ttk.Frame(parent, padding=10)
+        install(parent)
+        self.widget = ttk.Frame(parent, padding=20)
         self._closed = False
         self._focus_callback = None
         self._pending_pairing: tuple[str, str, str, str, int] | None = None
@@ -71,7 +73,7 @@ class ConnectionTab:
         frame = self.widget
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(0, weight=1)
-        self._canvas = tk.Canvas(frame, highlightthickness=0, borderwidth=0)
+        self._canvas = tk.Canvas(frame, highlightthickness=0, borderwidth=0, background=SURFACE)
         self._canvas.grid(row=0, column=0, sticky="nsew")
         scroll = scrollbar(frame, orient=tk.VERTICAL, command=self._canvas.yview)
         scroll.grid(row=0, column=1, sticky="ns")
@@ -83,8 +85,13 @@ class ConnectionTab:
         content.bind("<Configure>", self._content_resized, add="+")
         self._canvas.bind("<Configure>", self._canvas_resized, add="+")
         self._scroller = CanvasScroller(self._canvas)
+        heading = ttk.Frame(content)
+        heading.grid(row=0, column=0, sticky='ew', pady=(0, 16))
+        ttk.Label(heading, text='Connection', style='Title.TLabel').pack(anchor='w')
+        ttk.Label(heading, text='Connect to a peer and compare identities before approval.',
+                  style='Muted.TLabel', wraplength=650).pack(anchor='w', pady=(4, 0))
         local = ttk.LabelFrame(content, text="Your device IP addresses", padding=8)
-        local.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        local.grid(row=4, column=0, sticky="ew", pady=(0, 16))
         local.columnconfigure(1, weight=1)
         ttk.Label(local, text=f"Hostname: {socket.gethostname()}").grid(
             row=0, column=0, columnspan=2, sticky="w"
@@ -108,7 +115,7 @@ class ConnectionTab:
         )
 
         listener = ttk.LabelFrame(content, text="Listener", padding=8)
-        listener.grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        listener.grid(row=3, column=0, sticky="ew", pady=(0, 16))
         listener.columnconfigure(1, weight=1)
         ttk.Label(listener, text="Bind IPv4").grid(row=0, column=0, sticky="w")
         ttk.Entry(listener, textvariable=self._bind_ip, width=18).grid(row=0, column=1, sticky="w")
@@ -125,13 +132,13 @@ class ConnectionTab:
         )
 
         peer = ttk.LabelFrame(content, text="Peer", padding=8)
-        peer.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        peer.grid(row=1, column=0, sticky="ew", pady=(0, 16))
         peer.columnconfigure(1, weight=1)
         ttk.Label(peer, text="Peer IPv4").grid(row=0, column=0, sticky="w")
         ttk.Entry(peer, textvariable=self._peer_ip, width=18).grid(row=0, column=1, sticky="w")
         ttk.Label(peer, text="Port").grid(row=0, column=2, sticky="w", padx=(8, 0))
         ttk.Entry(peer, textvariable=self._peer_port, width=8).grid(row=0, column=3, sticky="w")
-        ttk.Button(peer, text="Connect", command=self._connect).grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Button(peer, text="Connect", command=self._connect, style='Primary.TButton').grid(row=1, column=0, sticky="w", pady=(5, 0))
         ttk.Button(peer, text="Disconnect", command=self._disconnect).grid(row=1, column=1, sticky="w", padx=5, pady=(5, 0))
         ttk.Label(peer, text="Connection state:").grid(row=2, column=0, sticky="w", pady=(5, 0))
         ttk.Label(peer, textvariable=self._state_text).grid(row=2, column=1, columnspan=3, sticky="w", pady=(5, 0))
@@ -156,7 +163,7 @@ class ConnectionTab:
         )
 
         pairing = ttk.LabelFrame(content, text="Peer identity approval", padding=8)
-        pairing.grid(row=3, column=0, sticky="ew", pady=(0, 8))
+        pairing.grid(row=2, column=0, sticky="ew", pady=(0, 16))
         pairing.columnconfigure((0, 1), weight=1)
         self._pairing_label = ttk.Label(pairing, textvariable=self._pairing_text, wraplength=700)
         self._pairing_label.grid(
@@ -170,19 +177,19 @@ class ConnectionTab:
         self._reject_button.state(["disabled"])
 
         remembered = ttk.LabelFrame(content, text="Remembered peers", padding=8)
-        remembered.grid(row=4, column=0, sticky="nsew")
+        remembered.grid(row=5, column=0, sticky="nsew")
         remembered.columnconfigure(0, weight=1)
         self._peers = tk.Listbox(remembered, height=4, exportselection=False)
         self._peers.grid(row=0, column=0, sticky="nsew")
         ttk.Button(remembered, text="Forget peer", command=self._forget_selected).grid(
             row=1, column=0, sticky="w", pady=(5, 0)
         )
-        ttk.Label(remembered, text="Forgetting never disconnects a peer; active sessions must be disconnected first.").grid(
+        ttk.Label(remembered, text="Forgetting never disconnects a peer; active sessions must be disconnected first.", wraplength=650).grid(
             row=2, column=0, sticky="w", pady=(5, 0)
         )
         self._message_label = ttk.Label(content, textvariable=self._message_text, wraplength=750)
         self._message_label.grid(
-            row=5, column=0, sticky="w", pady=(6, 0)
+            row=6, column=0, sticky="w", pady=(6, 0)
         )
         self._watch_focus(content)
 

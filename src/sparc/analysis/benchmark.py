@@ -62,7 +62,7 @@ def summarize(samples_ns: list[int], payload_bytes: int) -> SampleStats:
     )
 
 
-_ALLOWED_SIZES = (64, 1024, 16384)
+_ALLOWED_SIZES = (64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384)
 _OPERATIONS = ("hash", "sign", "encrypt", "decrypt", "recompute_hash", "verify")
 
 
@@ -109,7 +109,7 @@ def run_local_benchmarks(
     """Measure six local cryptographic operations on synthetic operands."""
     if (
         not isinstance(sizes, tuple)
-        or not 1 <= len(sizes) <= 3
+        or not 1 <= len(sizes) <= 9
         or any(type(size) is not int or size not in _ALLOWED_SIZES for size in sizes)
         or len(set(sizes)) != len(sizes)
     ):

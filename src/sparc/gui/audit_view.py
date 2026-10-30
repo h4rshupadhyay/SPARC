@@ -9,6 +9,7 @@ from tkinter import filedialog, ttk
 from ..audit_format import AuditReport
 from .jobs import JobController
 from .scrolling import scrollbar
+from .appearance import install, text_options, Disclosure
 
 
 class AuditTab:
@@ -16,13 +17,15 @@ class AuditTab:
 
     def __init__(self, parent: ttk.Notebook, service) -> None:
         self.service = service
-        self.widget = ttk.Frame(parent, padding=10)
+        self._appearance = install(parent)
+        self.widget = ttk.Frame(parent, padding=20)
         self._closed = False
         self._busy = False
         self._job_kind: str | None = None
         self._job_checkpoint: Path | None = None
         self._head = None
         self._status = tk.StringVar(master=self.widget, value="Loading durable audit head")
+        self._verification_text = tk.StringVar(master=self.widget, value='Not verified')
         self._head_text = tk.StringVar(master=self.widget, value="Durable writer head unavailable")
         self._checkpoint_text = tk.StringVar(master=self.widget, value="No checkpoint selected")
         self._metrics_text = tk.StringVar(master=self.widget, value="Audit append metrics unavailable")
@@ -35,18 +38,22 @@ class AuditTab:
         frame = self.widget
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(5, weight=1)
-        ttk.Label(frame, textvariable=self._status).grid(row=0, column=0, sticky="w")
-        self._head_label = ttk.Label(
-            frame, textvariable=self._head_text, wraplength=850, justify=tk.LEFT
-        )
+        heading = ttk.Frame(frame)
+        heading.grid(row=0, column=0, sticky='ew', pady=(0, 12))
+        ttk.Label(heading, text='Audit', style='Title.TLabel').pack(anchor='w')
+        ttk.Label(heading, textvariable=self._status, style='Muted.TLabel').pack(anchor='w', pady=(4, 0))
+        ttk.Label(frame, textvariable=self._verification_text, style='Heading.TLabel').grid(row=1, column=0, sticky='w', pady=(0, 12))
+        self._raw_details = Disclosure(frame, 'Writer snapshot and timing details')
+        self._raw_details.grid(row=4, column=0, sticky='ew', pady=(8, 8))
+        self._head_label = ttk.Label(self._raw_details.body, textvariable=self._head_text, wraplength=850, style='Muted.TLabel')
         self._head_label.grid(
-            row=1, column=0, sticky="ew", pady=(4, 8)
+            row=0, column=0, sticky="ew", pady=(4, 8)
         )
 
         controls = ttk.Frame(frame)
         controls.grid(row=2, column=0, sticky="ew")
         self._verify_button = ttk.Button(
-            controls, text="Verify available chain", command=lambda: self._start_job("verify")
+            controls, text="Verify available chain", command=lambda: self._start_job("verify"), style='Primary.TButton'
         )
         controls.columnconfigure((0, 1), weight=1, uniform="audit-actions")
         self._verify_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=(0, 4))
@@ -67,16 +74,20 @@ class AuditTab:
         self._checkpoint_label.grid(
             row=3, column=0, sticky="w", pady=(7, 0)
         )
-        ttk.Label(frame, textvariable=self._metrics_text).grid(
-            row=4, column=0, sticky="w", pady=(4, 0)
+        ttk.Label(self._raw_details.body, textvariable=self._metrics_text, style='Muted.TLabel').grid(
+            row=1, column=0, sticky="w", pady=(4, 0)
         )
-        details = ttk.Frame(frame)
-        details.grid(row=5, column=0, sticky="nsew", pady=(7, 0))
-        details.columnconfigure(0, weight=1)
-        details.rowconfigure(0, weight=1)
-        self._details = tk.Text(details, height=15, wrap=tk.WORD, state=tk.DISABLED)
+        report = ttk.LabelFrame(frame, text='Verification report', padding=12)
+        report.grid(row=5, column=0, sticky='nsew', pady=(8, 0))
+        report.columnconfigure(0, weight=1)
+        report.rowconfigure(0, weight=1)
+        self._details = tk.Text(report, height=8, wrap=tk.WORD, **text_options(self._appearance))
+        self._details.insert('1.0', 'Verify the available chain to inspect its captured committed prefix.\n'
+                             'Loading a writer snapshot does not verify the chain.\n\n'
+                             'To compare a saved checkpoint, choose Verify selected checkpoint.')
+        self._details.configure(state=tk.DISABLED)
         self._details.grid(row=0, column=0, sticky="nsew")
-        details_scroll = scrollbar(details, orient=tk.VERTICAL, command=self._details.yview)
+        details_scroll = scrollbar(report, orient=tk.VERTICAL, command=self._details.yview)
         details_scroll.grid(row=0, column=1, sticky="ns")
         self._details.configure(yscrollcommand=details_scroll.set)
         self._error_label = ttk.Label(frame, textvariable=self._error, wraplength=850)
@@ -158,6 +169,8 @@ class AuditTab:
         self._job_kind = None
         self._set_controls_enabled(True)
         if kind == "error":
+            if operation == 'verify':
+                self._verification_text.set('Verification could not finish')
             self._status.set("Audit operation failed")
             self._error.set(str(value))
             return
@@ -179,6 +192,7 @@ class AuditTab:
             self._error.set("")
 
     def _show_report(self, report: AuditReport, checkpoint: Path | None) -> None:
+        self._verification_text.set('Verified captured prefix' if report.valid else 'Verification failed')
         if checkpoint is None:
             checkpoint_status = "Available chain only; no checkpoint selected"
         elif report.valid and report.checkpoint_checked:

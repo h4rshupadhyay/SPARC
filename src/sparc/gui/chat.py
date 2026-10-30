@@ -10,6 +10,11 @@ from tkinter.font import nametofont
 
 from .jobs import JobController
 from .scrolling import scrollbar
+from ..models import Endpoint
+
+from .conversation import Conversation
+from .image_chat import ImageChat
+from .appearance import install, text_options, BORDER
 
 
 _HISTORY_LIMIT = 500
@@ -21,8 +26,10 @@ class ChatTab:
 
     def __init__(self, parent: ttk.Notebook, service) -> None:
         self.service = service
-        self.widget = ttk.Frame(parent, padding=10)
+        self._appearance = install(parent)
+        self.widget = ttk.Frame(parent, padding=20)
         self._closed = False
+        self._layout_id = None
         self._connected = False
         self._entries: list[dict] = []
         self._by_key: dict[tuple[str, str], dict] = {}
@@ -40,22 +47,32 @@ class ChatTab:
         frame = self.widget
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
-        ttk.Label(frame, textvariable=self._status).grid(row=0, column=0, sticky="w", pady=(0, 6))
+        header = ttk.Frame(frame)
+        header.grid(row=0, column=0, sticky='ew', pady=(0, 10))
+        header.columnconfigure(0, weight=1)
+        ttk.Label(header, text='Chat', style='Title.TLabel').grid(row=0, column=0, sticky='w')
+        ttk.Label(header, textvariable=self._status, style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=(4, 0))
+        self._security_open = tk.BooleanVar(master=frame, value=True)
+        self._inspector_width = 380
+        self._inspect_button = ttk.Checkbutton(header, text='Security details', variable=self._security_open,
+                                               command=self._toggle_inspector)
+        self._inspect_button.grid(row=0, column=1, rowspan=2, sticky='e')
 
-        body = ttk.Panedwindow(frame, orient=tk.VERTICAL)
+        body = self._body = tk.PanedWindow(frame, orient=tk.HORIZONTAL, background=BORDER,
+                                           borderwidth=0, sashwidth=8, opaqueresize=True)
         body.grid(row=1, column=0, sticky="nsew")
         history_frame = ttk.Frame(body)
         history_frame.columnconfigure(0, weight=1)
         history_frame.rowconfigure(0, weight=1)
-        self._history = tk.Listbox(history_frame, height=6, exportselection=False)
+        self._history = Conversation(history_frame, self._selection_changed)
         scroll = scrollbar(history_frame, orient=tk.VERTICAL, command=self._history.yview)
         self._history.configure(yscrollcommand=scroll.set)
         self._history.grid(row=0, column=0, sticky="nsew")
         scroll.grid(row=0, column=1, sticky="ns")
-        self._history.bind("<<ListboxSelect>>", self._selection_changed)
         self._notice_label = ttk.Label(history_frame, text="")
         self._notice_label.grid(row=1, column=0, columnspan=2, sticky="w")
-        inspector_frame = ttk.Frame(body)
+        self._notice_label.grid_remove()
+        inspector_frame = self._inspector_frame = ttk.LabelFrame(body, text='Message security', padding=8)
         inspector_frame.columnconfigure(0, weight=1)
         inspector_frame.rowconfigure(1, weight=1)
         inspector_toolbar = ttk.Frame(inspector_frame)
@@ -66,8 +83,8 @@ class ChatTab:
         self._crypto_toggle.grid(row=0, column=0, sticky="w")
         self._crypto_toggle.state(["disabled"])
         self._inspector = tk.Text(
-            inspector_frame, height=13, wrap=tk.WORD, state=tk.DISABLED,
-            font="TkFixedFont", padx=12, pady=10,
+            inspector_frame, height=13, width=40, wrap=tk.WORD, state=tk.DISABLED,
+            **text_options(self._appearance, technical=True),
         )
         self._heading_font = nametofont("TkDefaultFont", root=frame).copy()
         self._heading_font.configure(weight="bold")
@@ -93,19 +110,57 @@ class ChatTab:
             )
         self._copy_button.grid(row=0, column=1, sticky="w", padx=(8, 0))
         self._copy_button.state(["disabled"])
-        body.add(history_frame, weight=1)
-        body.add(inspector_frame, weight=3)
+        self._inspector.bind('<Configure>', self._sync_inspector_extent, add='+')
+        inspector_scroll.grid(row=1, column=1, sticky="ns")
+        body.add(history_frame, stretch='always', minsize=280)
+        body.add(inspector_frame, stretch='never', minsize=380, width=self._inspector_width)
+        body.bind('<Configure>', self._schedule_layout, add='+')
 
         compose = ttk.Frame(frame)
-        compose.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        compose.grid(row=2, column=0, sticky="ew", pady=(10, 0))
         compose.columnconfigure(0, weight=1)
-        self._input = tk.Text(compose, height=4, wrap=tk.WORD)
-        self._input.grid(row=0, column=0, sticky="ew")
-        self._send_button = ttk.Button(compose, text="Send", command=self._send)
-        self._send_button.grid(row=0, column=1, sticky="ns", padx=(8, 0))
+        ttk.Label(compose, text='Message', style='Heading.TLabel').grid(row=0, column=0, sticky='w', pady=(0, 8))
+        self._input = tk.Text(compose, height=3, wrap=tk.WORD, **text_options(self._appearance))
+        self._input.grid(row=1, column=0, sticky="ew")
+        self._input.bind('<Control-Return>', self._send_shortcut)
+        actions = ttk.Frame(compose)
+        actions.grid(row=2, column=0, sticky='ew', pady=(8, 0))
+        actions.columnconfigure(1, weight=1)
+        self._send_button = ttk.Button(actions, text="Send", command=self._send, style='Primary.TButton')
+        self._send_button.grid(row=0, column=2, sticky='e')
+        ttk.Label(actions, text='Ctrl+Enter to send', style='Muted.TLabel').grid(row=0, column=1, sticky='e', padx=12)
         self._send_button.state(["disabled"])
         self._error = tk.StringVar(master=self.widget, value="")
-        ttk.Label(frame, textvariable=self._error, wraplength=750).grid(row=3, column=0, sticky="w", pady=(5, 0))
+        self._images = ImageChat(self, compose, actions)
+        ttk.Label(frame, textvariable=self._error, wraplength=750, style='Error.TLabel').grid(row=3, column=0, sticky="w", pady=(5, 0))
+
+    def _send_shortcut(self, _event=None):
+        self._send()
+        return 'break'
+
+    def _toggle_inspector(self):
+        if self._security_open.get():
+            if str(self._inspector_frame) not in tuple(map(str, self._body.panes())):
+                self._body.add(self._inspector_frame, stretch='never', minsize=380,
+                               width=self._inspector_width)
+            self._schedule_layout()
+        elif str(self._inspector_frame) in tuple(map(str, self._body.panes())):
+            self._inspector_width = self._inspector_frame.winfo_width()
+            self._body.forget(self._inspector_frame)
+
+    def _layout_conversation(self, _event=None):
+        self._layout_id = None
+        if self._closed:
+            return
+        self._input.configure(height=2 if self.widget.winfo_height() < 700 else 3)
+
+    def _schedule_layout(self, _event=None):
+        if not self._closed and self._layout_id is None:
+            self._layout_id = self._body.after_idle(self._layout_conversation)
+
+    def _sync_inspector_extent(self, _event=None):
+        if not self._closed:
+            self._inspector.count('1.0', 'end', 'update', 'ypixels')
 
     def handle_event(self, event) -> None:
         if self._closed:
@@ -118,7 +173,13 @@ class ChatTab:
             connected = data.get("state") == "connected"
             self._connected = connected
             self._status.set("Connected" if connected else str(data.get("state", "Disconnected")))
+            if connected:
+                peer = getattr(self.service, 'connected_peer', lambda: None)()
+                if isinstance(peer, dict) and isinstance(peer.get('endpoint'), Endpoint):
+                    endpoint = peer['endpoint']
+                    self._status.set(f'Connected · {endpoint.ip}:{endpoint.port}')
             self._send_button.state(["!disabled"] if connected and self._active_send is None else ["disabled"])
+            self._images.state()
             if not connected:
                 self._early_deliveries.clear()
                 for entry in self._entries:
@@ -130,6 +191,8 @@ class ChatTab:
             self._message(data)
         elif kind == "delivery":
             self._delivery(data)
+        elif kind == "image_transfer":
+            self._images.handle(data)
 
     def _message(self, data: dict) -> None:
         message_id, text = data.get("message_id"), data.get("text")
@@ -192,7 +255,10 @@ class ChatTab:
         if entry.get("key") is not None:
             self._by_key[entry["key"]] = entry
         if len(self._entries) > _HISTORY_LIMIT:
-            removed = self._entries.pop(0)
+            removed = next((item for item in self._entries
+                            if item.get('kind') != 'image' or item['status'] in
+                            {'verified','rejected','canceled','failed','unconfirmed'}), self._entries[0])
+            self._entries.remove(removed)
             if removed.get("key") is not None and self._by_key.get(removed["key"]) is removed:
                 self._by_key.pop(removed["key"], None)
             if removed is self._active_send:
@@ -200,27 +266,22 @@ class ChatTab:
             self._notice = "Older messages removed (history limit: 500)"
 
     def _refresh_history(self) -> None:
-        selected = self._history.curselection()
-        selected_entry = self._entries[selected[0]] if selected and selected[0] < len(self._entries) else None
-        self._history.delete(0, tk.END)
         self._notice_label.configure(text=self._notice)
-        for entry in self._entries:
-            timestamp = entry.get("timestamp")
-            clock = f"{timestamp:%H:%M:%S} · " if timestamp is not None else ""
-            label = f"{clock}{entry['origin'].title()} · {entry['status'].title()} · {entry['text'].replace(chr(10), ' ↵ ')}"
-            self._history.insert(tk.END, label)
-        if selected_entry is None and self._entries:
-            selected_entry = self._entries[-1]
-        if selected_entry in self._entries:
-            index = self._entries.index(selected_entry)
-            self._history.selection_set(index)
-            self._show_inspection(selected_entry)
+        if self._notice:
+            self._notice_label.grid()
+        self._history.render(self._entries, self._images)
+        selected = self._history.curselection()
+        if selected and selected[0] < len(self._entries):
+            self._show_inspection(self._entries[selected[0]])
 
     def _selection_changed(self, _event=None) -> None:
         selection = self._history.curselection()
         index = selection[0] if selection else -1
         if 0 <= index < len(self._entries):
-            self._show_inspection(self._entries[index])
+            if self._entries[index].get('kind') == 'image':
+                self._refresh_history()
+            else:
+                self._show_inspection(self._entries[index])
 
     def _show_inspection(self, entry: dict) -> None:
         self._selected_entry = entry
@@ -258,6 +319,8 @@ class ChatTab:
             measured = f"{value / 1000:g} µs" if value is not None else "unavailable"
             timing_rows.append(f"{label}: {measured}")
         sections.insert(0, (timing_heading, timing_rows))
+        if entry.get("kind") == "image":
+            sections.append(("IMAGE TRANSFER DETAILS", self._images.inspection_rows(entry)))
         if inspection is not None:
             computed = getattr(inspection, "computed_sha256", None)
             digest = getattr(inspection, "sha256", None)
@@ -271,14 +334,22 @@ class ChatTab:
                 f"Hash comparison: {comparison}",
             ]))
             if self._crypto_expanded:
-                sections.append(("CRYPTOGRAPHIC DETAILS", [
+                crypto_rows = [
                     f"Sender SHA-256 (full): {digest or missing}",
                     f"Receiver SHA-256 (full): {computed or missing}",
                     f"Signature (base64): {self._b64(getattr(inspection, 'signature', None))}",
                     f"Nonce (base64): {self._b64(getattr(inspection, 'nonce', None))}",
                     f"Tag (base64): {self._b64(getattr(inspection, 'tag', None))}",
                     f"Ciphertext (base64): {self._b64(getattr(inspection, 'ciphertext', None))}",
-                ]))
+                ]
+                ciphertext = getattr(inspection, "ciphertext", None)
+                ciphertext_length = getattr(inspection, "ciphertext_length", 0)
+                if isinstance(ciphertext, bytes) and ciphertext_length > len(ciphertext):
+                    crypto_rows.append(
+                        f"Ciphertext truncated: showing {len(ciphertext):,} of "
+                        f"{ciphertext_length:,} bytes"
+                    )
+                sections.append(("CRYPTOGRAPHIC DETAILS", crypto_rows))
         self._crypto_toggle.state(["!disabled"] if inspection is not None else ["disabled"])
         self._crypto_toggle.configure(text=f"{'Hide' if self._crypto_expanded else 'Show'} cryptographic details")
         self._copy_button.state(["!disabled"] if inspection is not None else ["disabled"])
@@ -297,7 +368,8 @@ class ChatTab:
             self._inspector.insert(tk.END, "\n".join(rows) + "\n")
         self._inspector.configure(state=tk.DISABLED)
         # Include the last wrapped ciphertext line in Tk's scroll extent.
-        self._inspector.count("1.0", "end", "update", "ypixels")
+        if self._inspector.winfo_ismapped():
+            self._inspector.count("1.0", "end", "update", "ypixels")
         self._inspector.yview_moveto(0.0)
 
     @staticmethod
@@ -393,7 +465,11 @@ class ChatTab:
         if self._closed:
             return
         self._closed = True
+        if self._layout_id is not None:
+            self._body.after_cancel(self._layout_id)
+            self._layout_id = None
         self._job.close()
+        self._images.close()
         self._early_deliveries.clear()
         self._entries.clear()
         self._by_key.clear()
@@ -402,7 +478,7 @@ class ChatTab:
         self._crypto_toggle.state(["disabled"])
         self._copy_button.state(["disabled"])
         self._input.delete("1.0", tk.END)
-        self._history.delete(0, tk.END)
+        self._history.clear()
         self._inspector.configure(state=tk.NORMAL)
         self._inspector.delete("1.0", tk.END)
         self._inspector.configure(state=tk.DISABLED)

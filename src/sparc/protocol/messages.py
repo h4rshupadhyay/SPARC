@@ -7,6 +7,7 @@ import re
 import time
 
 from ..models import SparcError
+from .files import FILE_FIELDS, FILE_KINDS, validate_file
 
 
 _ID_RE = re.compile(r"[0-9a-f]{32}\Z")
@@ -21,6 +22,7 @@ _UNSIGNED_FIELDS = {
     "ping": frozenset(("kind", "ping_id")),
     "pong": frozenset(("kind", "ping_id")),
 }
+_UNSIGNED_FIELDS.update({kind: frozenset(fields) for kind, fields in FILE_FIELDS.items()})
 
 
 def _require_id(value: object, name: str) -> None:
@@ -88,7 +90,9 @@ def validate_application(payload: dict, signed: bool = True) -> None:
     if payload.keys() != expected:
         raise SparcError("invalid_schema", "Application fields do not match the required schema")
 
-    if kind in ("chat", "benchmark"):
+    if kind in FILE_KINDS:
+        validate_file({key: value for key, value in payload.items() if key != 'signature'})
+    elif kind in ("chat", "benchmark"):
         _require_id(payload.get("message_id"), "message_id")
         if kind == "benchmark":
             _require_id(payload.get("run_id"), "run_id")
@@ -125,4 +129,6 @@ def signing_projection(payload: dict) -> dict:
     projection.pop("signature", None)
     if projection.get("kind") in ("chat", "benchmark"):
         projection.pop("text", None)
+    if projection.get('kind') == 'file_chunk':
+        projection.pop('data', None)
     return projection

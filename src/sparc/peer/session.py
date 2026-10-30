@@ -52,6 +52,7 @@ class ActiveSession:
         self._inbound_bucket = RecordBucket(time.monotonic, limits=limits)
         self._liveness = Liveness(time.monotonic, limits=limits)
         self._session_id = session_id
+        self._bulk: deque[dict] = deque()
         self._outbound: deque[dict] = deque()
         self._control: deque[dict] = deque()
         self._cancel = cancel if cancel is not None else threading.Event()
@@ -119,6 +120,26 @@ class ActiveSession:
             self._control.append(payload)
             self._queue_condition.notify()
 
+    def enqueue_bulk(self, payload: dict) -> None:
+        """Queue at most four low-priority image chunks without blocking."""
+        with self._queue_condition:
+            if self._cancel.is_set():
+                raise self._cancelled_error()
+            if len(self._bulk) >= 4:
+                raise SparcError("busy", "Image chunk queue is full")
+            self._bulk.append(payload)
+            self._queue_condition.notify_all()
+
+    def enqueue_transfer_control(self, payload: dict) -> None:
+        """Transfer callbacks must never block reader/maintenance on a full queue."""
+        with self._queue_condition:
+            if self._cancel.is_set():
+                raise self._cancelled_error()
+            if len(self._control) >= self._limits.control_queue:
+                raise SparcError("busy", "Control queue is full")
+            self._control.append(payload)
+            self._queue_condition.notify_all()
+
     def close(self) -> None:
         """Request terminal cancellation and notify the owner once."""
         self._terminate(SparcError("operation_cancelled", "Session was closed"))
@@ -135,6 +156,9 @@ class ActiveSession:
                 continue
             worker.join(timeout=max(0.0, deadline - time.monotonic()))
             complete = complete and not worker.is_alive()
+        transfers = getattr(self, 'transfers', None)
+        if transfers is not None:
+            complete = transfers.join(max(0, deadline-time.monotonic())) and complete
         return complete
 
     @staticmethod
@@ -151,6 +175,10 @@ class ActiveSession:
                 return payload
             if self._outbound:
                 payload = self._outbound.popleft()
+                self._queue_condition.notify_all()
+                return payload
+            if self._bulk:
+                payload = self._bulk.popleft()
                 self._queue_condition.notify_all()
                 return payload
             self._queue_condition.wait(
@@ -288,6 +316,9 @@ class ActiveSession:
         with self._queue_condition:
             self._queue_condition.notify_all()
 
+        transfers = getattr(self, 'transfers', None)
+        if transfers is not None:
+            transfers.close()
         self._close_transport()
         if error.code == "peer_inactivity" and loss_elapsed_ns is not None:
             event = ServiceEvent("operation_metrics", {

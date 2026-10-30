@@ -25,6 +25,11 @@ class Trial:
 
 
 @dataclass(frozen=True)
+class CustomTrial(Trial):
+    input_source: str = 'custom'
+
+
+@dataclass(frozen=True)
 class LabResult:
     seed: int
     cases: int

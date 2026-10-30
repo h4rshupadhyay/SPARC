@@ -38,6 +38,9 @@ def _safe_error(code: str) -> str:
 def unlock_identity_for_gui(root: tk.Misc, data_dir: Path):
     """Prompt on the Tk thread and return an opaque unlocked-store handle."""
     from ..identity import inspect_identity
+    from .appearance import install
+
+    install(root)
 
     directory = Path(data_dir)
     info = inspect_identity(directory)
@@ -65,8 +68,12 @@ def unlock_identity_for_gui(root: tk.Misc, data_dir: Path):
     dialog.protocol("WM_DELETE_WINDOW", lambda: request_cancel())
     dialog.bind("<Escape>", lambda _event: request_cancel())
 
+    from .window_chrome import WindowChrome
+
+    WindowChrome(dialog)
+
     body = ttk.Frame(dialog, padding=16)
-    body.grid(row=0, column=0, sticky="nsew")
+    body.grid(row=1, column=0, sticky="nsew")
     body.columnconfigure(0, weight=1)
     if purpose == "create":
         heading = "Create an encrypted SPARC identity"

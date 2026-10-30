@@ -20,7 +20,7 @@ from . import identity_storage as _identity_storage
 from .identity_codec import (
     CancelPredicate,
     CredentialProvider,
-    IdentityCredentials,
+    IdentityCredentials as IdentityCredentials,
     IdentityInfo,
     IdentityUnlockRequest,
 )

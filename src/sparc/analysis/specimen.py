@@ -3,6 +3,7 @@
 import hashlib
 import time
 import uuid
+from dataclasses import dataclass
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -15,6 +16,16 @@ from ..protocol.messages import signing_projection
 
 _SPECIMEN_TEXT = "SPARC synthetic signature specimen"
 _SESSION_LABEL = b"SPARC synthetic signature specimen session v1"
+
+
+@dataclass(frozen=True)
+class SignatureResult:
+    public_key: bytes
+    signed_bytes: bytes
+    signature: bytes
+    valid: bool
+    sign_ns: int | None = None
+    verify_ns: int | None = None
 
 
 def make_specimen() -> tuple[bytes, bytes, bytes]:
@@ -63,3 +74,21 @@ def verify_specimen(public_key: bytes, signed_bytes: bytes, signature: bytes) ->
     except (InvalidSignature, TypeError, ValueError):
         return False
     return True
+
+
+def verify_timed_specimen(public_key: bytes, signed_bytes: bytes, signature: bytes) -> tuple[bool, int | None]:
+    """Measure verification only; parsing and UI work stay outside the clock."""
+    if (type(public_key) is not bytes or len(public_key)!=32 or type(signed_bytes) is not bytes
+            or type(signature) is not bytes or len(signature)!=64):
+        return False,None
+    try:
+        public=Ed25519PublicKey.from_public_bytes(public_key)
+    except (TypeError,ValueError):
+        return False,None
+    started = time.perf_counter_ns()
+    try:
+        public.verify(signature,signed_bytes)
+        valid=True
+    except (InvalidSignature,TypeError,ValueError):
+        valid=False
+    return valid, time.perf_counter_ns() - started

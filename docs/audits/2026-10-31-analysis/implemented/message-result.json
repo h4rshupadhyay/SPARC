@@ -1,0 +1,27 @@
+{
+  "format": "sparc-public-analysis",
+  "version": 1,
+  "kind": "message",
+  "data": {
+    "plaintext": "Information security — नमस्ते\nAES-256 🔐",
+    "plaintext_bytes": 56,
+    "ciphertext": "95b1a13e84ce41646634937d6d36263621f620f1c21324fcd381c09f6ece653b1527fb0bbfc7ca6b1d1f7fb8b2f52a5dcadda5ac2d0550a2",
+    "nonce": "567af6a5c9f3425a60554c2c",
+    "tag": "f29316c28cc7011ea7918fcb8a9d527b",
+    "recovered_text": "Information security — नमस्ते\nAES-256 🔐",
+    "digest": "a58bde00f05aed917fa2a037e1cdc626c856679c36d2196067b621d0e67623a9",
+    "recomputed_digest": "a58bde00f05aed917fa2a037e1cdc626c856679c36d2196067b621d0e67623a9",
+    "public_key": "5bf741ba03bc8112e7586611e46abec07190d1bc234f8f6d314e6cf204e7d3c2",
+    "signed_bytes": "496e666f726d6174696f6e20736563757269747920e2809420e0a4a8e0a4aee0a4b8e0a58de0a4a4e0a5870a4145532d32353620f09f9490",
+    "signature": "912386433f640a64f8dda876b726007a60b742fa45a8d4e370a2f5b36deac2f5dda4db3546f1d1a97dace88f9e7732f49bfc042cd95bbc030342a554f6c5c80b",
+    "signature_valid": true,
+    "timings": {
+      "hash": 11582,
+      "encrypt": 13776,
+      "decrypt": 5461,
+      "recompute_hash": 1723,
+      "sign": 51727,
+      "verify": 126719
+    }
+  }
+}

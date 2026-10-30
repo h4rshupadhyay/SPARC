@@ -1,7 +1,6 @@
 """Deterministic CSV exports for synthetic analysis results."""
 
 import csv
-from dataclasses import asdict
 from datetime import datetime, timezone
 import io
 import json
@@ -156,7 +155,8 @@ def _lab_metadata(result: LabResult, run_id: str) -> dict:
         },
         "definitions": {
             "bit_percent": "100 times changed ciphertext bits divided by 128",
-            "byte_percent": "100 times changed ciphertext bytes divided by 16",
+            "byte_percent": "100 times changed ciphertext bytes divided by 16; character-level proxy, not Unicode text",
+            "character_target": "Coursework target 100%; independent-byte model expectation 99.609375%; observations are not forced",
             "hex_percent": "100 times changed lowercase hexadecimal positions divided by 32",
             "population_std": "population standard deviation over retained synthetic trials",
         },

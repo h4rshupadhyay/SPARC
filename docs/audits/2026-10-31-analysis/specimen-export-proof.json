@@ -1,0 +1,18 @@
+{
+  "trigger": "Save CSV after generating and verifying a signature specimen",
+  "rows": 1818,
+  "row_types": {
+    "sample": 1800,
+    "summary": 18
+  },
+  "operations": {
+    "hash": 303,
+    "sign": 303,
+    "encrypt": 303,
+    "decrypt": 303,
+    "recompute_hash": 303,
+    "verify": 303
+  },
+  "metadata_test_type": "local_cryptographic",
+  "signature_column_present": false
+}

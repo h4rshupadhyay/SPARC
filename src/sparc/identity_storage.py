@@ -10,7 +10,6 @@ from pathlib import Path
 import secrets
 import stat
 import sys
-import tempfile
 import time
 from typing import Iterator
 
@@ -47,20 +46,6 @@ def _absolute_path(path: Path) -> Path:
     if ".." in Path(path).parts:
         raise _error("data_permissions_failed", "Identity storage path contains an unsafe component")
     return result
-
-
-def _posix_reject_link_components(path: Path) -> Path:
-    absolute = _absolute_path(path)
-    current = Path(absolute.anchor)
-    for part in absolute.parts[1:]:
-        current = current / part
-        try:
-            info = current.lstat()
-        except FileNotFoundError:
-            continue
-        if stat.S_ISLNK(info.st_mode):
-            raise _error("data_permissions_failed", "Identity storage path contains a symbolic link")
-    return absolute
 
 
 def _posix_verify_directory(path: Path, *, create: bool) -> int:

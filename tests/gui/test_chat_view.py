@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import gc
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 import gc
@@ -49,8 +50,8 @@ class FakeService:
 
 
 def _make_tab(service=None):
-    # Release destroyed Tk views on the main thread before a send worker can
-    # trigger cyclic collection, matching the analysis-view test fixture.
+    # Destroyed Tk roots form cycles. Collect them on the main thread before
+    # another worker can trigger collection and Tk finalizers there.
     gc.collect()
     root, notebook = _root_or_skip()
     service = service or FakeService()
@@ -258,13 +259,13 @@ def test_pending_verified_unconfirmed_and_event_before_send_result():
     ))
     assert "pending" in _visible(tab.widget).lower()
     assert original in _visible(tab.widget)
-    assert "incoming" in _visible(tab.widget).lower()
+    assert "Peer · Verified" in _visible(tab.widget)
     service.release_send.set()
     assert service.send_returned.wait(1)
     # Wait for Tk to consume the worker result before attempting another send.
     _pump(root, lambda: "disabled" not in _send_button(tab).state())
     assert "disabled" not in _send_button(tab).state()
-    _pump(root, lambda: "outgoing" in _visible(tab.widget).lower())
+    _pump(root, lambda: "You · Pending" in _visible(tab.widget))
     _pump(root, lambda: "pending" in _visible(tab.widget).lower())
     receipt = DeliveryReceipt(service.result_id, 10, 20, len(original.encode()), len(original), 100)
     tab.handle_event(ServiceEvent("delivery", {"message_id": service.result_id, "receipt": receipt}))
@@ -289,11 +290,9 @@ def test_pending_verified_unconfirmed_and_event_before_send_result():
     visible = _visible(tab.widget).lower()
     assert "unconfirmed" in visible
     assert "outgoing" in visible
-    history_rows = next(
-        child for child in _walk(tab.widget) if isinstance(child, tk.Listbox)
-    )
-    assert sum(original.lower() in history_rows.get(index).lower()
-               for index in range(history_rows.size())) == 2
+    # Mixed Chat history is now a Text surface with embedded image controls.
+    history_rows = tab._history.get('1.0', 'end').splitlines()
+    assert sum(original.lower() in line.lower() for line in history_rows) == 2
     tab.close()
     root.destroy()
 
@@ -386,8 +385,8 @@ def test_history_identity_includes_origin_and_message_id():
     tab.handle_event(_message(message_id, text, origin="outgoing"))
     visible = _visible(tab.widget).lower()
     assert visible.count(text) >= 2
-    assert "incoming" in visible
-    assert "outgoing" in visible
+    assert "peer · verified" in visible
+    assert "you · pending" in visible
     for index in range(500):
         tab.handle_event(_message(f"{index + 100:032x}", f"replacement-{index}"))
     visible = _visible(tab.widget).lower()
@@ -436,6 +435,7 @@ def test_chat_inspector_timings_precede_long_ciphertext_and_scrollbar_reaches_it
         "origin": "incoming",
     }))
     _crypto_toggle(tab).invoke()
+    tab._history.select(0)
     root.update()
     inspector = tab._inspector
     scrollbars = [child for child in _walk(tab.widget)
@@ -566,19 +566,15 @@ def test_local_timestamp_survives_duplicate_events_delivery_and_reselection(monk
         original = _message("1" * 32, "first message", _inspection(), origin=origin)
         tab.handle_event(original)
         assert "2026-10-10 12:34:56 IST (UTC+05:30)" in _visible(tab.widget)
-        assert "12:34:56" in tab._history.get(0)
+        assert "12:34:56" in tab._history.get("1.0", "end")
 
         Clock.current = Clock(2026, 10, 10, 13, 45, 0, tzinfo=local_zone)
         tab.handle_event(original)
         tab.handle_event(ServiceEvent("delivery", {"message_id": "1" * 32}))
         tab.handle_event(_message("2" * 32, "second message", origin=origin))
-        tab._history.selection_clear(0, tk.END)
-        tab._history.selection_set(1)
-        tab._selection_changed()
+        tab._history.select(1)
         assert "2026-10-10 13:45:00 IST (UTC+05:30)" in tab._inspector.get("1.0", "end-1c")
-        tab._history.selection_clear(0, tk.END)
-        tab._history.selection_set(0)
-        tab._selection_changed()
+        tab._history.select(0)
         detail = tab._inspector.get("1.0", "end-1c")
         assert "2026-10-10 12:34:56 IST (UTC+05:30)" in detail
         assert "13:45:00" not in detail
@@ -604,9 +600,7 @@ def test_crypto_details_collapse_and_copy_complete_current_values():
         assert root.clipboard_get() == encoded
 
         tab.handle_event(_message("2" * 32, "second", _inspection("2" * 32)))
-        tab._history.selection_clear(0, tk.END)
-        tab._history.selection_set(1)
-        tab._selection_changed()
+        tab._history.select(1)
         tab._copy_menu.invoke("Ciphertext")
         assert root.clipboard_get() == "AQID"
         _crypto_toggle(tab).invoke()

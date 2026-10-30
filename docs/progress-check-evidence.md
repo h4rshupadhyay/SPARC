@@ -3,10 +3,12 @@
 Use explicit evidence labels in a report: **automated test**, **Linux local
 GUI**, **independent-process simulation**, **external physical-device run**, or
 **pending**. Tests establish behavior under their stated conditions. They do
-not substitute for an actual Windows-to-Linux session, packet capture, or
+not substitute for a native cross-platform session, packet capture, or
 workload measurement. Current retained simulation files are ignored local
 artifacts under `.demo/c8-evidence/`, not committed evidence for another
 machine.
+
+Current required platforms are Linux and macOS. Windows compatibility was withdrawn on 2026-10-09; historical Windows criteria below are superseded by that scope. Native macOS and Linux–Mac evidence remain pending.
 
 ## Five security goals
 
@@ -22,7 +24,7 @@ machine.
 
 | # | Acceptance criterion | Existing evidence and current status |
 | --- | --- | --- |
-| 1 | Install dependencies and start the same Tk application on Windows and Linux. | Linux diagnostic/GUI checks: `tests/integration/test_check_cli.py`, `tests/integration/test_gui_cli.py`, and `tests/gui/test_app.py`; `python -m sparc --check --data-dir PATH`. Windows installation and actual Windows startup are **pending**. |
+| 1 | Install dependencies and start the same Tk application on Linux and macOS. | Linux diagnostic/GUI checks: `tests/integration/test_check_cli.py`, `tests/integration/test_gui_cli.py`, and `tests/gui/test_app.py`; `python -m sparc --check --data-dir PATH`. Native macOS installation and startup are **pending**. |
 | 2 | Configure IP/port, connect, approve a fingerprint once, and recognize it on reconnect. | `tests/gui/test_connection_view.py`, `tests/integration/test_service_pairing.py`, `tests/integration/test_simulation.py`; the simulation uses actual comparison decisions. Two physical devices are **pending**. |
 | 3 | Exchange Unicode text in both directions and show confirmed delivery. | `tests/integration/test_peer_service.py`, `tests/integration/test_handshake_sockets.py`, `tests/integration/test_simulation.py`; includes newline/Unicode behavior and observed delivery evidence. |
 | 4 | Use AES-256-GCM with fresh session keys and nonreused directional nonces. | `tests/unit/test_crypto.py`, `tests/unit/test_records.py`, `tests/integration/test_handshake_sockets.py`, `tests/integration/test_availability.py`. These are implementation tests, not a physical packet-capture claim. |
@@ -31,10 +33,10 @@ machine.
 | 7 | Verify signed audit chains and detect changes; demonstrate checkpoint-relative deletion using an independently retained checkpoint. | `tests/unit/test_audit_verify.py`, `tests/unit/test_audit_checkpoint.py`; `.demo/c8-evidence/audit-evidence.json` reports independent verification and tail-removal rejection with retained checkpoints. Keep checkpoint copies separate from log copies. |
 | 8 | Exercise heartbeat, rate limits, bounded reconnect, and measured availability outcomes. | Bounded behavior tests: `tests/integration/test_record_pacing.py`, `tests/integration/test_heartbeat.py`, `tests/integration/test_availability.py`. Measurement outcomes are **pending**; test pass status alone is not a measured availability result. |
 | 9 | Report sensitivity experiments with operands, formulas, observed data, and aggregate results. | A1/A2 automated checks and actual synthetic-local CLI artifacts: `.demo/a2-evidence/lab/` contains 6,400 plaintext and 12,800 key flips. Raw CSV reconstruction agrees with all six mode/metric summaries. These are synthetic operands, not live session data. |
-| 10 | Separate and export local, network, audit, resource, and conversion performance results. | A2 local primitive benchmark/export: `.demo/a2-evidence/local-benchmark.csv` contains 18,000 successful timings with independently reconstructed summaries. The A3 loopback run at `.demo/a3-evidence/b43fafc2b06c45cc900a5207780c80ee/` used two peer services in one process and contains 300 verified receipt rows (100 each at 64, 1,024, and 16,384 bytes), 10 warmups per size (30 total), and four resource samples. Raw receipt rows are in `network.csv`; the controller independently checked reconstruction and records it in `reconstruction.json`. Finite resource exercise artifacts are under `.demo/a3-evidence/resources-1bf14715c72f41f2b11a2deacae219cd/`. These are local simulation measurements; physical-device and conversion measurements remain pending. |
-| 11 | Provide external Wireshark evidence for secure traffic and a separate plaintext baseline; reconcile XML, SQLite, and automated summaries with source capture. | Baseline CLI behavior: `tests/integration/test_plaintext_baseline.py`; secure CLI contract: `tests/integration/test_simulation.py`. Capture steps are in [the demo guide](progress-check-demo.md). Actual PCAP/PCAPNG, PDML, SQLite, and PyShark outputs are **pending Traffic Analysis (T1–T3)**. |
+| 10 | Separate and export local, network, audit, resource, and conversion performance results. | A2 local primitive benchmark/export: `.demo/a2-evidence/local-benchmark.csv` contains 18,000 successful timings with independently reconstructed summaries. The A3 loopback run at `.demo/a3-evidence/b43fafc2b06c45cc900a5207780c80ee/` used two peer services in one process and contains 300 verified receipt rows (100 each at 64, 1,024, and 16,384 bytes), 10 warmups per size (30 total), and four resource samples. Raw receipt rows are in `network.csv`; the controller independently checked reconstruction and records it in `reconstruction.json`. Finite resource exercise artifacts are under `.demo/a3-evidence/resources-1bf14715c72f41f2b11a2deacae219cd/`. These are local simulation measurements; physical-device measurements remain pending. Linux synthetic conversion measurements are verified in [T2 evidence](t2-traffic-export-evidence.md), with separately labeled input/output sizes and publication timing scopes. |
+| 11 | Provide external Wireshark evidence for secure traffic and a separate plaintext baseline; reconcile XML, SQLite, and automated summaries with source capture. | Baseline CLI behavior: `tests/integration/test_plaintext_baseline.py`; secure CLI contract: `tests/integration/test_simulation.py`. Capture steps are in [the demo guide](progress-check-demo.md). Linux synthetic PCAP, PDML, SQLite and PyShark count/known-field agreement are verified in [T2 evidence](t2-traffic-export-evidence.md). Real secure/baseline PCAPNG captures and native macOS evidence remain **pending**; synthetic frames are not secure-session captures. |
 | 12 | Use two physical devices or explicitly identified independent-process simulation and justify evidence for all five goals. | `.demo/c8-simulation.json` and `.demo/c8-evidence/simulation.json` document two independent local processes, distinct identities/directories/ports, actual peer comparisons, verified transfers, and normal cleanup. This is simulation evidence; physical cross-platform evidence is **pending**. Goal-by-goal limits are in the table above. |
-| 13 | Ensure shutdown, canceled work, and failed connections leave no hanging GUI operations. | `tests/integration/test_service_shutdown.py`, `tests/gui/test_app.py`, and `tests/integration/test_simulation.py` cover bounded cleanup paths. Windows GUI lifecycle remains **pending**. |
+| 13 | Ensure shutdown, canceled work, and failed connections leave no hanging GUI operations. | `tests/integration/test_service_shutdown.py`, `tests/gui/test_app.py`, and `tests/integration/test_simulation.py` cover bounded cleanup paths. Native macOS GUI lifecycle remains **pending**. Offline cancellation and late-result behavior are covered by `tests/gui/test_traffic_view.py`. |
 
 ## Reproducible report fields
 
@@ -63,11 +65,12 @@ and a bounded invalid-connection workload. It does not record measured
 detection or recovery times, fresh-session recovery evidence, or goodput for an
 attack workload; those results remain unavailable.
 
-For future capture conversion, retain the source capture and its SHA-256;
+For capture conversion, retain the source capture and its SHA-256;
 record Wireshark/TShark/PyShark versions, filters, packet counts, included
 captured bytes, conversion elapsed time, output sizes, completion status, and
 cross-check results. PDML export, SQLite import, traffic summaries, and
-conversion-efficiency measurements remain pending. Captured-byte rate is not
+conversion measurements have actual Linux synthetic-fixture coverage; real
+secure/baseline capture conversion remains pending. Captured-byte rate is not
 application goodput, and dissector retransmission indicators are not proof of
 an attack.
 

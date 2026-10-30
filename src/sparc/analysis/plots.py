@@ -1,0 +1,388 @@
+"""Measured plot data and a shared vector drawing for Tk and SVG exports."""
+from dataclasses import dataclass
+import math
+from statistics import fmean
+import textwrap
+import xml.etree.ElementTree as ET
+
+from .models import BenchmarkResult, LabResult, Trial
+
+_COLORS=('#1d4ed8','#b45309','#0f766e','#a21caf','#be123c','#475569')
+_LABELS={'encrypt':'Encryption','decrypt':'Decryption','hash':'Hash generation',
+         'recompute_hash':'Hash recomputation','sign':'Signature generation','verify':'Signature verification',
+         'network_round_trip':'Verified receipt'}
+
+
+@dataclass(frozen=True)
+class Series:
+    label: str
+    points: tuple[tuple[float,float|None],...]
+    color: str
+    dashed: bool=False
+    connected: bool=True
+    ranges: tuple[tuple[float,float,float],...]=()
+    bars: bool=False
+    boxes: tuple[tuple[float,float,float,float,float,float],...]=()
+    annotations: tuple[str,...]=()
+
+
+@dataclass(frozen=True)
+class Plot:
+    title: str
+    x_label: str
+    y_label: str
+    series: tuple[Series,...]
+    complete: bool
+    ticks: tuple[tuple[float,str],...]=()
+    x_scale: str='category'
+    y_limit: float | None=None
+    notes: tuple[str,...]=()
+    context: tuple[str,...]=()
+    matrix: tuple[tuple[float|None,...],...]=()
+    x_reference: float | None=None
+
+
+@dataclass(frozen=True)
+class Mark:
+    kind: str
+    xy: tuple[float,...]
+    color: str='#202124'
+    text: str=''
+    anchor: str='w'
+    dashed: bool=False
+    angle: int=0
+
+
+def _value(value,divisor):
+    if type(value) not in (int,float) or not math.isfinite(value) or value<0:
+        return None
+    return value/divisor
+
+
+def benchmark_plots(result: BenchmarkResult, operations=('encrypt','decrypt')) -> list[Plot]:
+    rows=result.summary
+    network=any(r.get('operation')=='network_round_trip' for r in rows)
+    names=('network_round_trip',) if network else operations
+    duration=[]; percentiles=[]; rate=[]; operation_rate=[]; counts=[]; distributions=[]
+    for index,name in enumerate(names):
+        matching=sorted((r for r in rows if r.get('operation')==name and
+                         type(r.get('payload_bytes')) is int and r['payload_bytes']>0),
+                        key=lambda r:r['payload_bytes'])
+        if not matching: continue
+        color=_COLORS[index%len(_COLORS)]
+        label=_LABELS.get(name,name)
+        duration.append(Series(label+' mean',tuple((r['payload_bytes'],_value(r.get('mean_ns'),1000)) for r in matching),color))
+        percentiles.append(Series(label+' p95',tuple((r['payload_bytes'],_value(r.get('p95_ns'),1000)) for r in matching),color,True))
+        counts.append(label+': '+', '.join(f"{r['payload_bytes']} B n={r.get('count','unavailable')}" for r in matching))
+        field='goodput_bytes_s' if network else 'throughput_bytes_s'
+        if name in ('sign','verify'):
+            operation_rate.append(Series(label,tuple((r['payload_bytes'],1e9/r['mean_ns']
+                if type(r.get('mean_ns')) in (int,float) and math.isfinite(r['mean_ns']) and r['mean_ns']>0 else None) for r in matching),color))
+        else:
+            rate.append(Series(label,tuple((r['payload_bytes'],_value(r.get(field),1048576)) for r in matching),color))
+        boxes=[]
+        for row in matching:
+            values=sorted(sample['elapsed_ns']/1000 for sample in result.samples
+                if sample.get('operation')==name and sample.get('payload_bytes')==row['payload_bytes']
+                and sample.get('success') and type(sample.get('elapsed_ns')) is int and sample['elapsed_ns']>=0)
+            if values:
+                def quantile(fraction):
+                    position=(len(values)-1)*fraction
+                    low=math.floor(position); high=math.ceil(position)
+                    return values[low]+(values[high]-values[low])*(position-low)
+                boxes.append((row['payload_bytes'],values[0],quantile(.25),quantile(.5),quantile(.75),values[-1]))
+        if boxes:
+            distributions.append(Series(label,tuple((box[0],box[3]) for box in boxes),color,connected=False,boxes=tuple(boxes)))
+    if not duration: return []
+    context=benchmark_context(result)
+    plots=[Plot('Network verified receipt duration' if network else 'Local cryptographic duration',
+                 'Payload (bytes, logarithmic scale)','Duration (µs)',tuple(duration+percentiles),result.complete,
+                 x_scale='log',notes=('Verified peer receipt interval' if network else 'AES-256-GCM / SHA-256 / Ed25519 · measured primitive calls',)+tuple(counts)+('p95: 95th sample percentile; not a confidence interval.',),context=context)]
+    if rate:
+        plots.append(Plot('Network verified goodput' if network else 'Local cryptographic throughput',
+                 'Payload (bytes, logarithmic scale)','Verified network goodput (MiB/s)' if network else 'Effective plaintext throughput (MiB/s)',
+                 tuple(rate),result.complete,x_scale='log',notes=tuple(counts)+(
+                     'Goodput includes the measured verified-receipt interval.' if network else
+                     'Effective plaintext bytes / summed primitive time; AES-GCM processes a larger signed envelope.',),context=context))
+    if operation_rate:
+        plots.append(Plot('Signature operations per second','Associated message bytes (logarithmic scale)','Operations/s',
+            tuple(operation_rate),result.complete,x_scale='log',notes=tuple(counts)+(
+            'Ed25519 over a near-constant-length protocol context; excludes hashing and key creation.',),context=context))
+    if distributions:
+        plots.append(Plot('Measured timing distribution','Payload (bytes, logarithmic scale)','Duration (µs)',
+            tuple(distributions),result.complete,x_scale='log',notes=('Box: Q1–Q3; line: median; whiskers: observed min–max, not a confidence interval.',)+tuple(counts),context=context))
+    return plots
+
+
+def benchmark_context(result: BenchmarkResult) -> tuple[str,...]:
+    """Only public, explicitly selected provenance belongs in chart exports."""
+    m=result.metadata
+    return (
+        f"Run: {m.get('run_id','unavailable')} | UTC: {m.get('utc','unavailable')}",
+        f"Warmups: {m.get('warmups','unavailable')} | Repetitions: {m.get('repetitions','unavailable')} per operation/workload | Evidence: {m.get('evidence_mode','unavailable')}",
+        f"Python: {m.get('python','unavailable')} | Platform: {m.get('platform','unavailable')}",
+    )
+
+
+def sensitivity_plots(result: LabResult | Trial, *, conditional=False) -> list[Plot]:
+    from .sensitivity import _decimal_seed
+    metrics=(('bit_percent','Bit change',50),('byte_percent','Byte change (character-level proxy)',99.609375),
+             ('hex_percent','Hex-character change',93.75))
+    modes=('plaintext','key') if isinstance(result,LabResult) else (result.mode,)
+    xs=tuple(range(len(modes)))
+    batch=isinstance(result,LabResult)
+    trials=result.trials if batch else [result]
+    groups={mode:[t for t in trials if t.mode==mode] for mode in modes}
+    complete=result.complete if batch else True
+    context=(f'Seed: {_decimal_seed(result.seed)} | Cases requested: {result.cases} | Retained trials: {len(trials)}',) if batch else (
+        f'Single trial | Mode: {result.mode} | Case: {result.case_index} | Input bit: {result.bit_index}',)
+    context+=(('Custom' if getattr(result,'input_source',None)=='custom' else 'Synthetic')+
+        ' isolated AES-256 block experiment; observations do not establish cryptographic security.',)
+    plots=[]
+    for metric,title,expected in metrics:
+        values={mode:[getattr(t.difference,metric) for t in groups[mode]] for mode in modes}
+        points=tuple((x,fmean(values[mode]) if values[mode] else None) for x,mode in zip(xs,modes))
+        ranges=tuple((x,min(values[mode]),max(values[mode])) for x,mode in zip(xs,modes) if values[mode] and batch)
+        annotations=tuple('Not measured' if y is None else f'{y:.4g}%' if batch else
+            f'{y * (128 if metric=="bit_percent" else 16 if metric=="byte_percent" else 32)/100:g} / '
+            f'{128 if metric=="bit_percent" else 16 if metric=="byte_percent" else 32} · {y:.4g}%'
+            for _,y in points)
+        series=[Series('Observed mean (range: min–max)' if batch else 'Observed trial',points,_COLORS[0],connected=False,ranges=ranges,annotations=annotations),
+                Series(f'Model expectation ({expected}%)',tuple((x,expected) for x in xs),_COLORS[2],True)]
+        if metric=='byte_percent':
+            series.append(Series('Coursework target (100%)',tuple((x,100) for x in xs),_COLORS[1],True))
+        ticks=tuple((x,'Plaintext bit (diffusion)' if mode=='plaintext' else 'Key bit (confusion)') for x,mode in zip(xs,modes))
+        plots.append(Plot(title,'Flipped operand','Ciphertext positions changed (%)',tuple(series),
+                          complete,ticks,y_limit=100,notes=tuple(f'{mode}: n={len(groups[mode])}' for mode in modes),context=context))
+    if batch and trials:
+        distribution=[]; frequencies=[]
+        for index,mode in enumerate(modes):
+            group=groups[mode]
+            counts=[0]*20
+            for trial in group:
+                counts[min(19,int(trial.difference.bit_percent//5))]+=1
+            distribution.append(Series(mode.title(),tuple((2.5+5*i,100*n/len(group) if group else None) for i,n in enumerate(counts)),_COLORS[index],connected=False,bars=True))
+            bits=[0]*128
+            for trial in group:
+                delta=bytes(a^b for a,b in zip(trial.baseline_ciphertext,trial.modified_ciphertext))
+                for bit in range(128):
+                    bits[bit]+=bool(delta[bit//8] & (0x80>>(bit%8)))
+            frequencies.append(Series(mode.title(),tuple((bit,100*n/len(group) if group else None) for bit,n in enumerate(bits)),_COLORS[index]))
+        counts=tuple(f'{mode}: n={len(groups[mode])}' for mode in modes)
+        plots.append(Plot('Bit-change distribution','Output bits changed (%); 5-point bins','Trials in bin (%)',tuple(distribution),complete,
+                          ticks=tuple((x,str(x)) for x in (0,25,50,75,100)),x_scale='linear',notes=counts+('Each mode is normalized independently; 100% is included in the last bin.',),context=context,x_reference=50))
+        frequencies.append(Series('Model expectation (50%)',((0,50),(127,50)),_COLORS[2],True))
+        plots.append(Plot('Output-bit change frequency','Output bit index (MSB first)','Trials changing this bit (%)',tuple(frequencies),complete,
+                          ticks=tuple((x,str(x)) for x in (0,32,64,96,127)),x_scale='linear',y_limit=100,
+                          notes=counts+('Pooled across input bits/cases; not the conditional avalanche criterion or a pass/fail test.',),context=context))
+        if conditional:
+            for mode in modes:
+                inputs=128 if mode=='plaintext' else 256
+                denominators=[0]*inputs
+                changed=[[0]*128 for _ in range(inputs)]
+                for trial in groups[mode]:
+                    denominators[trial.bit_index]+=1
+                    delta=bytes(a^b for a,b in zip(trial.baseline_ciphertext,trial.modified_ciphertext))
+                    for bit in range(128):
+                        changed[trial.bit_index][bit]+=bool(delta[bit//8] & (0x80>>(bit%8)))
+                matrix=tuple(tuple(100*count/denominators[index] if denominators[index] else None for count in row)
+                    for index,row in enumerate(changed))
+                plots.append(Plot(f'Conditional {mode}-bit changes','Output bit index (MSB first)',
+                    'Flipped input bit index',(),complete,x_scale='linear',y_limit=100,
+                    notes=('Cell: cases changing this output bit for this input-bit flip. Missing cells are unmeasured.',
+                    f'Cases per input bit: min {min(denominators)}, max {max(denominators)}; finite observations, not proof.'),
+                    context=context,matrix=matrix))
+    return plots
+
+
+def _footer_lines(plot: Plot,width: int,measure=None) -> list[str]:
+    # Conservative estimate also leaves room for native font metrics.
+    char_width = max(1,measure('M')) if measure else 9
+    columns=max(1,int((width-64)//char_width))
+    return [part for line in (*plot.notes,*plot.context) for part in textwrap.wrap(line,columns)]
+
+
+def plot_height(plot: Plot,width=900,chart_height=260,*,measure=None,line_height=22) -> int:
+    return (210 if plot.matrix else 180) + chart_height + len(plot.series)*(line_height+2) + len(_footer_lines(plot,width,measure))*line_height
+
+
+def drawing(plot: Plot,width=900,height=360,*,chart_height=260,measure=None,line_height=22,include_footer=True) -> list[Mark]:
+    """Layout once; both native and exported graphs consume these exact marks."""
+    width=max(380,width)
+    if plot.matrix:
+        return _matrix_drawing(plot,width,chart_height,measure,line_height,include_footer)
+    height=max(plot_height(plot,width,chart_height,measure=measure,line_height=line_height),height)
+    left,right,top=94,width-32,94 if include_footer else 64
+    bottom=top+chart_height
+    xs=sorted({x for series in plot.series for x,y in series.points}|{x for x,label in plot.ticks})
+    values=[y for series in plot.series for x,y in series.points if y is not None]
+    values.extend(high for series in plot.series for x,low,high in series.ranges)
+    values.extend(box[-1] for series in plot.series for box in series.boxes)
+    upper=plot.y_limit if plot.y_limit is not None else max(values,default=1)*1.1 or 1
+    xlow,xhigh=(min(xs),max(xs)) if xs else (0,1)
+    def point(x,y):
+        if len(xs)<2:
+            px=(left+right)/2
+        elif plot.x_scale=='log':
+            px=left+(math.log2(x)-math.log2(xlow))/(math.log2(xhigh)-math.log2(xlow))*(right-left)
+        elif plot.x_scale=='linear':
+            px=left+(x-xlow)/(xhigh-xlow)*(right-left)
+        else:
+            px=left+xs.index(x)/(len(xs)-1)*(right-left)
+        return (px,bottom-y/upper*(bottom-top))
+    marks=[Mark('text',(left,20),text=plot.title),
+           Mark('text',(right,20),text='Complete' if plot.complete else 'Incomplete',anchor='e'),
+           Mark('text',((left+right)/2,bottom+48),text=plot.x_label,anchor='center'),
+           Mark('text',(left,62 if include_footer else 44),text=plot.y_label)]
+    intervals=2 if not include_footer and chart_height<120 else 4
+    for i in range(intervals+1):
+        value=upper*i/intervals
+        y=point(xlow,value)[1]
+        marks.extend([Mark('line',(left,y,right,y),'#d1d5db'),
+                      Mark('text',(left-8,y),text=f'{value:.4g}',anchor='e')])
+    marks.append(Mark('line',(left,top,left,bottom,right,bottom)))
+    labels=dict(plot.ticks)
+    ticks=list(labels if labels else xs)
+    if width<1100 and len(ticks)>5:
+        step=math.ceil((len(ticks)-1)/4)
+        ticks=ticks[::step]+([ticks[-1]] if ticks[-1] not in ticks[::step] else [])
+    for x in ticks:
+        px=point(x,0)[0]
+        marks.append(Mark('text',(px,bottom+16),text=labels.get(x,f'{x:g}'),anchor='w' if x==xlow else ('e' if x==xhigh else 'center')))
+    unavailable=False
+    if plot.x_reference is not None:
+        px=point(plot.x_reference,0)[0]
+        marks.extend([Mark('line',(px,top,px,bottom),_COLORS[2],dashed=True),
+                      Mark('text',(px+6,top+14),_COLORS[2],text=f'{plot.x_reference:g}% reference')])
+    bar_series=[series for series in plot.series if series.bars]
+    for index,series in enumerate(plot.series):
+        segment=[]
+        def flush():
+            if series.connected and len(segment)>=4:
+                marks.append(Mark('polyline',tuple(segment),series.color,dashed=series.dashed))
+            segment.clear()
+        for point_index,(x,y) in enumerate(series.points):
+            if y is None:
+                unavailable=True; flush(); continue
+            px,py=point(x,y)
+            segment.extend((px,py))
+            if series.boxes:
+                pass
+            elif series.bars:
+                group_width=(right-left)/max(1,len(series.points))*.85
+                bar_width=group_width/len(bar_series)
+                bar_left=px-group_width/2+bar_series.index(series)*bar_width
+                marks.append(Mark('rectangle',(bar_left,py,bar_left+bar_width,bottom),series.color))
+            else:
+                marks.append(Mark('circle',(px,py),series.color))
+            if point_index<len(series.annotations):
+                marks.append(Mark('text',(min(right-8,max(left+8,px)),max(top+14,py-18)),
+                    series.color,text=series.annotations[point_index],anchor='center' if len(xs)==1 else 'w' if x==xlow else 'e' if x==xhigh else 'center'))
+        flush()
+        if len(xs)==1 and series.dashed:
+            available_y=next((y for _,y in series.points if y is not None),None)
+            if available_y is not None:
+                py=point(xs[0],available_y)[1]
+                marks.append(Mark('line',(left,py,right,py),series.color,dashed=True))
+        for x,minimum,q1,median,q3,maximum in series.boxes:
+            px,_=point(x,median)
+            px+=(index-(len(plot.series)-1)/2)*14
+            low_y=point(x,minimum)[1]; high_y=point(x,maximum)[1]
+            q1_y=point(x,q1)[1]; q3_y=point(x,q3)[1]; median_y=point(x,median)[1]
+            marks.extend([Mark('line',(px,low_y,px,high_y),series.color),
+                Mark('line',(px-5,low_y,px+5,low_y),series.color),Mark('line',(px-5,high_y,px+5,high_y),series.color),
+                Mark('rectangle',(px-6,q3_y,px+6,q1_y),series.color),
+                Mark('line',(px-6,median_y,px+6,median_y),'#202124')])
+        for x,low,high in series.ranges:
+            px,py=point(x,low); _,high_y=point(x,high)
+            marks.extend([Mark('line',(px,py,px,high_y),series.color),
+                          Mark('line',(px-5,py,px+5,py),series.color),
+                          Mark('line',(px-5,high_y,px+5,high_y),series.color)])
+        if not include_footer:
+            continue
+        lx=32
+        ly=bottom+78+index*(line_height+2)
+        marks.extend([Mark('line',(lx,ly,lx+18,ly),series.color,dashed=series.dashed),
+                      Mark('text',(lx+24,ly),series.color,text=series.label)])
+    if unavailable:
+        marks.append(Mark('text',(right,82),text='Unavailable measurements appear as gaps.',anchor='e'))
+    if include_footer:
+        footer_y=bottom+78+len(plot.series)*(line_height+2)
+        for line in _footer_lines(plot,width,measure):
+            marks.append(Mark('text',(32,footer_y),text=line))
+            footer_y+=line_height
+    return marks
+
+
+def _matrix_drawing(plot,width,chart_height,measure,line_height,include_footer):
+    left,right,top=94,width-32,94 if include_footer else 64
+    bottom=top+chart_height
+    rows=len(plot.matrix); columns=len(plot.matrix[0])
+    marks=[Mark('text',(left,20),text=plot.title),Mark('text',(left,62 if include_footer else 44),text=plot.y_label),
+        Mark('text',((left+right)/2,bottom+48),text=plot.x_label,anchor='center')]
+    def color(value):
+        # Diverging around the model's 50%; color is an observed frequency, not a verdict.
+        if value is None: return '#10161f'
+        target=(60,131,214) if value<50 else (246,173,85)
+        base=(41,51,66); distance=abs(value-50)/50
+        return '#'+''.join(f'{round(a+(b-a)*distance):02x}' for a,b in zip(base,target))
+    dx=(right-left)/columns; dy=chart_height/rows
+    for row,values in enumerate(plot.matrix):
+        for column,value in enumerate(values):
+            marks.append(Mark('rectangle',(left+column*dx,top+row*dy,left+(column+1)*dx,top+(row+1)*dy),color(value)))
+    for column in (0,32,64,96,127):
+        marks.append(Mark('text',(left+(column+.5)*dx,bottom+16),text=str(column),anchor='center'))
+    for row in (0,rows//4,rows//2,rows*3//4,rows-1):
+        marks.append(Mark('text',(left-8,top+(row+.5)*dy),text=str(row),anchor='e'))
+    marks.append(Mark('text',(right,20),text='Complete' if plot.complete else 'Incomplete',anchor='e'))
+    if include_footer:
+        marks.append(Mark('text',(32,bottom+78),text='Blue 0% · neutral 50% · orange 100% · dark: unmeasured'))
+        y=bottom+78+line_height
+        for line in _footer_lines(plot,width,measure):
+            marks.append(Mark('text',(32,y),text=line)); y+=line_height
+    return marks
+
+
+def _svg_element(plot,width,height):
+    root=ET.Element('svg',xmlns='http://www.w3.org/2000/svg',width=str(width),height=str(height),
+                    viewBox=f'0 0 {width} {height}',role='img')
+    ET.SubElement(root,'title').text=plot.title
+    ET.SubElement(root,'rect',width='100%',height='100%',fill='white')
+    for mark in drawing(plot,width,height):
+        xy=mark.xy
+        if mark.kind=='text':
+            node=ET.SubElement(root,'text',x=f'{xy[0]:.3f}',y=f'{xy[1]:.3f}',fill=mark.color,
+                **{'font-family':'sans-serif','font-size':'14','dominant-baseline':'middle',
+                   'text-anchor':{'w':'start','e':'end','center':'middle'}[mark.anchor]})
+            if mark.angle: node.set('transform',f'rotate({-mark.angle} {xy[0]} {xy[1]})')
+            node.text=mark.text
+        elif mark.kind=='circle':
+            ET.SubElement(root,'circle',cx=f'{xy[0]:.3f}',cy=f'{xy[1]:.3f}',r='3',fill=mark.color)
+        elif mark.kind=='rectangle':
+            ET.SubElement(root,'rect',x=f'{xy[0]:.3f}',y=f'{xy[1]:.3f}',
+                          width=f'{xy[2]-xy[0]:.3f}',height=f'{xy[3]-xy[1]:.3f}',fill=mark.color)
+        else:
+            attrs={'points':' '.join(f'{xy[i]:.3f},{xy[i+1]:.3f}' for i in range(0,len(xy),2)),
+                   'fill':'none','stroke':mark.color,'stroke-width':'1.5'}
+            if mark.kind=='polyline': attrs['class']='series'
+            if mark.dashed: attrs['stroke-dasharray']='5 4'
+            ET.SubElement(root,'polyline',attrs)
+    return root
+
+
+def plot_svg(plot: Plot,width=900,height=360) -> str:
+    width=max(380,width); height=max(plot_height(plot,width),height)
+    return ET.tostring(_svg_element(plot,width,height),encoding='unicode')
+
+
+def plots_svg(plots: list[Plot],width=900,height=360) -> str:
+    width=max(380,width)
+    heights=[max(height,plot_height(plot,width)) for plot in plots]
+    total=sum(heights)
+    root=ET.Element('svg',xmlns='http://www.w3.org/2000/svg',width=str(width),height=str(total),
+                    viewBox=f'0 0 {width} {total}')
+    offset=0
+    for plot,plot_h in zip(plots,heights):
+        child=_svg_element(plot,width,plot_h); child.set('y',str(offset)); root.append(child)
+        offset+=plot_h
+    return ET.tostring(root,encoding='unicode')

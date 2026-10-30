@@ -1,6 +1,6 @@
 # SPARC
 
-SPARC is a secure peer-to-peer text communication and analysis lab built with
+SPARC is a secure peer-to-peer text/image communication and analysis lab built with
 Python and Tkinter. It combines authenticated IPv4/TCP messaging, encrypted
 local identities, signed audit records, and reproducible analysis tools.
 
@@ -9,22 +9,33 @@ local identities, signed audit records, and reproducible analysis tools.
 - **Connection:** manual listener and peer configuration, first-contact
   fingerprint approval, remembered-peer trust, refreshable local IP addresses,
   and bounded reconnection.
-- **Chat:** Unicode and multiline text protected with AES-256-GCM and Ed25519
+- **Chat:** Unicode text and inline image attachments protected with AES-256-GCM and Ed25519
   signatures, authenticated X25519 session establishment, verified delivery
-  receipts, replay checks, and public record inspection.
+  receipts, replay checks, public record inspection, receiver approval, and
+  byte-for-byte verified image files.
 - **Audit:** signed hash-chain logs, retained checkpoints, and cancellable
   verification. Detecting a deleted log tail requires an independently retained
   checkpoint.
 - **Analysis:** synthetic AES sensitivity trials, local cryptographic
   benchmarks, verified-receipt network measurements, CPU/RSS sampling,
   timed signature specimens, collision/preimage/second-preimage hashing
-  experiments, operation metrics, and CSV exports.
+  experiments, operation metrics, performance/sensitivity graphs, CSV exports,
+  and standalone SVG graph exports.
 
-Traffic Analysis is in progress. Capture normalization, traffic indexing, and
-the traffic CLI/GUI are not yet completed features. See the
-[implementation ledger](docs/implementation-status.md) for task-level status.
+- **Traffic Analysis:** offline saved-capture summaries, transactional SQLite
+  indexes, validated unfiltered PDML XML, conversion measurements, and a CLI
+  with JSON reports. Optional TShark/PyShark dependencies are checked when an
+  offline action starts. Linux synthetic-fixture agreement is verified;
+  physical secure/baseline captures and native macOS validation remain pending.
 
 ## Install and run
+
+The desktop uses a dark charcoal theme with larger shared typography across
+all five tabs, charts and the identity dialog. It selects an installed
+sans-serif face (Fira Sans on the verified Linux machine) and a separate
+monospace face for technical evidence. Fonts have native fallbacks and require
+no download. SVG charts retain a light background for standalone documents.
+See [appearance evidence](docs/dark-appearance-evidence.md) for verification.
 
 Run these commands from the repository root. Python 3.10 or newer and a working
 Tk installation are required for the desktop app.
@@ -132,6 +143,35 @@ tag, and ciphertext. **Copy value** copies a selected complete value, including
 values abbreviated in the summary. Receiver hashes missing from an outgoing
 inspection are labeled **not available locally**.
 
+### Send images in Chat
+
+Update **both peers** with `python -m pip install -r requirements-dev.txt`.
+The image preview dependency is Pillow 12.3.0, compatible with Python 3.10.
+Older SPARC peers do not understand image-transfer records.
+
+In **Chat**, choose **Attach image** or drop a local image into the conversation
+or message box, inspect the preview, then choose **Send image**. Native file
+dropping uses tkinterdnd2 0.7.0. PNG, JPEG, GIF, and WebP files up to 100 MiB are
+supported; previews are limited to 20 million pixels and show the first frame.
+Your text draft stays intact and text chat remains available during transfer.
+
+Images arrive automatically in the connected peer's conversation. Received
+images use private temporary storage for the running peer and survive reconnects;
+the latest 100 received images are retained and removed when the peer closes.
+Choose **Save image** to keep a permanent copy, including after disconnecting.
+The preview appears only after authenticated transfer and whole-file hash/size
+checks. All original bytes are preserved, including animated frames; previews
+do not transcode files. Incoming and outgoing messages use distinct bubbles.
+Security details occupy a reserved pane from startup; the checkbox hides it,
+and selecting another message respects that choice.
+
+Select an image entry to inspect its hash, latest chunk's signature, bounded
+Base64 ciphertext, authentication tag, and local encryption/decryption timings.
+Progress counts stored/confirmed bytes. **Verified** on the sender requires the
+receiver's signed final result. **Unconfirmed** means that confirmation was not
+obtained; the receiver may already have saved the file. Cancel or disconnect
+removes owned partial files, and a retry starts a new transfer.
+
 ## Standalone analysis
 
 Run synthetic sensitivity trials and local benchmarks without a connected peer
@@ -147,7 +187,20 @@ operands and local primitive timings do not establish physical-device network
 performance. Network benchmarks and resource sampling are available in the
 **Analysis** tab; network runs require a connected, authenticated peer.
 
-In **Analysis → Hashing security analysis**, choose collision, preimage, or
+In **Analysis → Experiments → Message lab**, enter a custom UTF-8 message
+(1–16,384 bytes) and select **Analyze message**. Details shows the original and
+recovered text, AES-256-GCM ciphertext/nonce/tag, matching SHA-256 digests,
+Ed25519 public key/signature, and six individual operation times in microseconds.
+This experiment signs the exact message bytes. Leave the optional 64-hex-digit
+AES key blank to generate a fresh lab key. **Save result JSON…** stores the
+current public result, including its message contents, without private keys.
+
+For a custom one-bit experiment, choose **Diffusion / confusion → Custom input**.
+Enter a 32-byte AES key as hex and exactly 16 input bytes as UTF-8 or hex, then
+choose plaintext or key mode and a bit index. AES-256's block is 128 bits; its
+key is 256 bits. Seeded trials and reproducible batches remain available.
+
+In **Analysis → Experiments → Hash security**, choose collision, preimage, or
 second-preimage resistance, a seed, and an attempt limit.
 All searches compare complete 256-bit SHA-256 digests. Results show attempts,
 elapsed time, and any matching synthetic inputs
@@ -155,9 +208,38 @@ with their full digests. **Cancel** retains incomplete hashing results;
 **Save CSV…** exports the result and its scope. Definitions
 follow [NIST's hash-function guidance](https://csrc.nist.gov/Projects/hash-functions).
 
-**Generate specimen** also displays Ed25519 signature generation time, excluding
-key generation and encoding. Local benchmark signature rows display
-microseconds; CSV timing fields retain nanoseconds.
+In **Signature specimen**, **Generate specimen** displays the public signature
+and signing/verification times, excluding key generation and encoding.
+**Verify specimen** rechecks editable fields and preserves signing time only
+for the matching specimen. **Save result JSON…** and **Load specimen JSON…**
+store and reload its public evidence. Loading always reverifies the signature;
+the imported signing time is reported by the file. Benchmark CSV timings retain
+nanoseconds.
+
+In **Performance**, select **Use 9 local sizes** for workloads from 64 to 16,384
+bytes. Charts show measured mean/p95 duration, effective plaintext throughput,
+and timing distributions (quartiles, median and observed min–max). Signing and
+verification use operations/s because the protocol context is nearly constant
+in length; the custom Message lab uses a different signed input. Select an
+operation pair for the main presentation; all operations is an optional overview.
+Network/resource tools expand from their checkbox; network runs retain the
+original three-size limits and require a connected peer. Network charts show
+verified receipt duration and goodput with the selected evidence mode.
+Missing measurements appear as gaps; incomplete runs retain their label.
+**Export graphs SVG…** saves the panels for the selected operation group with
+full run details. A logarithmic size axis and connecting lines do not establish
+a proportional or nonproportional timing law; use the observed data.
+
+Sensitivity trials plot observed values alongside model expectations: 50% bit
+change, 99.609375% byte change, and 93.75% lowercase hex-character change.
+**Byte change (character-level proxy)** uses raw ciphertext bytes; the course's
+100% character-level target is displayed separately. Neither that target nor
+the model expectations are forced pass/fail outcomes or proof of security.
+Batch results also show a normalized histogram with a 50% reference and pooled
+output-bit frequencies. Enable conditional views to inspect each flipped input
+bit against each output bit; the heatmap reports cases per input bit and exact
+cell frequencies on hover. Pooled frequencies alone do not establish the
+conditional avalanche criterion.
 
 Benchmark tables show one median duration per workload and operation, with
 sample counts and p95 for context. Local rates show primitive throughput and
@@ -166,9 +248,35 @@ synthetic ASCII characters per second; network goodput uses confirmed receipts.
 
 ## Demonstrations and evidence
 
+Analyze a saved PCAP/PCAPNG without opening the GUI:
+
+```sh
+python -m sparc.traffic analyze capture.pcapng --report report.json --sqlite index.sqlite --xml details.xml --tshark /path/to/tshark
+```
+
+In the fifth **Traffic Analysis** tab, use **Open Capture**, optionally choose
+the TShark executable, then **Analyze**, **Export SQLite**, or **Export XML**.
+The optional display filter applies to the index and summary; XML always
+describes the full unfiltered source. Captured frame bytes/s is separate from
+application plaintext goodput; conversion packets/s measures processing speed.
+The **Capture rate** result tab plots captured bytes divided by nominal,
+epoch-aligned capture-time bins. Bins start at one second and coarsen to retain
+at most 200 bins. First/final bins may be partial, so their rates differ from
+the first-to-last aggregate. A nonpositive interval produces no rate graph.
+Return to **Summary** to change the source/filter or run an export.
+Source/output aliases and duplicate CLI output paths are rejected. Failed or
+canceled jobs preserve prior outputs before publication; a later CLI failure
+lists artifacts already completed. Publication uncertainty keeps the candidate
+and reports failure. See [setup](docs/setup.md#offline-traffic-analysis) and the
+[offline workflow](docs/progress-check-demo.md#offline-capture-analysis-and-exports).
+
 - [Progress-check demo and capture procedure](docs/progress-check-demo.md)
 - [Evidence map, measurement fields, and acceptance checklist](docs/progress-check-evidence.md)
 - [Identity encryption and platform verification evidence](docs/f1-identity-at-rest-evidence.md)
+- [Image transfer and graphical analysis evidence](docs/image-transfer-and-analysis-evidence.md)
+- [Analysis presentation workflow and verification](docs/analysis-presentation-evidence.md)
+- [Traffic index and PDML evidence](docs/t2-traffic-export-evidence.md)
+- [Traffic CLI and native interface evidence](docs/t3-traffic-interface-evidence.md)
 - [Implementation status](docs/implementation-status.md)
 
 Run the independent-process loopback demonstration from an interactive terminal:

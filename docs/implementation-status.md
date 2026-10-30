@@ -20,9 +20,9 @@ commits exist.
 | A2 Local benchmarks and exports | A2a-A2e | verified |
 | A3 Network and resource analysis | A3a-A3d | verified |
 | F1 Private identity key encryption at rest | F1 | verified on Linux; macOS branches regression checked; native demo pending |
-| T1 Capture normalization | T1a-T1d | verified; committed |
-| T2 Traffic indexing and exports | T2a-T2d | pending |
-| T3 Traffic CLI and GUI | T3a-T3c | pending |
+| T1 Capture normalization | T1a-T1d | verified; committed as 803c391 |
+| T2 Traffic indexing and exports | T2a-T2d | verified on Linux synthetic fixture; committed54bcdbb |
+| T3 Traffic CLI and GUI | T3a-T3c | verified on Linux; native Mac and real-session capture evidence pending |
 
 ## Task ledger
 
@@ -83,13 +83,13 @@ commits exist.
 | T1b | verified | Discovery RED/GREEN plus corrected T1 gate: 111 passed in 3.61 s, no skips | 803c391 |
 | T1c | verified | Corrected T1 gate: 111 passed in 3.61 s, no skips; lifecycle and unexpected reader termination regressions included | 803c391 |
 | T1d | verified | Corrected T1 gate: 111 passed in 3.61 s, no skips; TShark 4.6.6 decoded all five synthetic frames | 803c391 |
-| T2a | pending | Pending | pending |
-| T2b | pending | Pending | pending |
-| T2c | pending | Pending | pending |
-| T2d | pending | Pending | pending |
-| T3a | pending | Pending | pending |
-| T3b | pending | Pending | pending |
-| T3c | pending | Pending | pending |
+| T2a | verified | T2 gate76passed1.92s; actual TShark4.6.6, no skips; see T2 evidence | 54bcdbb |
+| T2b | verified | T2 gate76passed1.92s; actual TShark4.6.6, no skips; see T2 evidence | 54bcdbb |
+| T2c | verified | T2 gate76passed1.92s; actual TShark4.6.6, no skips; see T2 evidence | 54bcdbb |
+| T2d | verified | T2 gate76passed1.92s; actual TShark4.6.6, no skips; see T2 evidence | 54bcdbb |
+| T3a | verified on Linux | Final native Tk/socket/TShark suite1193passed9Windows-only skips197.42s; actual CLI and GUI fixture exports checked | local T3 milestone |
+| T3b | verified on Linux | Final native Tk/socket/TShark suite1193passed9Windows-only skips197.42s; actual CLI and GUI fixture exports checked | local T3 milestone |
+| T3c | verified on Linux | Final native Tk/socket/TShark suite1193passed9Windows-only skips197.42s; actual CLI and GUI fixture exports checked | local T3 milestone |
 
 ## Additional security task
 
@@ -287,3 +287,35 @@ with no warning summary. This includes the real TShark 4.6.6 synthetic-capture
 decoder checks and the native Linux Tk regression suite. Native macOS hardware
 behavior remains unverified. T1 is usable through its Python API without T2/T3;
 traffic storage, summaries, exports and CLI/GUI entry points remain pending.
+
+T2 resumed on 2026-10-10. T2a staged SQLite writer passed its accumulated 130-test gate; T2b exact summaries and staged report composition passed 149 tests. Both are uncommitted pending the T2 milestone. Sol's T2c helper-seam inspection found the public hash loop used 1-MiB reads without cancellation instead of the prescribed 64-KiB cancellable reads. A behavior-first regression precedes that correction and extraction of shared source/hash/version/publication helpers. PDML, real source/export agreement and the T2 independent milestone review remain pending.
+
+
+## Traffic continuation (2026-10-30)
+
+Resumed the paused T2c tests in the existing worktree after the image/results/UI
+milestones. The user's newer solo preference supersedes the historical
+Sol/Luna dispatch workflow. T2a/T2b were retained, the public 64-KiB cancellable
+hashing contract restored, and staged PDML publication and analysis-only
+ownership completed. The final scoped T2 gate passed76tests in1.92s without
+skips. Local commit `54bcdbb` contains the eight milestone-owned files; see
+[T2 evidence](t2-traffic-export-evidence.md). No merge or push.
+
+T3 CLI now publishes JSON last, reports partial completed artifacts and handles
+source/output aliases and source-revision agreement. Initial real-tool gate:
+12passed1.77s. The malformed source exposed PyShark destructor retrying cleanup
+on an already-closed loop. A failing regression reproduced it; the adapter's
+public subclass disables that second cleanup owner while preserving explicit
+cleanup uncertainty. Adapter/CLI gate:26passed4.09s without warnings.
+
+The fifth Traffic Analysis tab reuses JobController, keeps immutable worker
+snapshots, ignores late results and waits for explicit cancellation settlement.
+Native traffic/app/startup gate:14passed5.61s. The final frozen product-source
+suite passed **1,193 tests / 9 native Windows-only skips in 197.42 seconds**,
+exit0 with no warning summary. Actual CLI JSON/SQLite/PDML agreement and native
+800×640 / 1200×900 screenshots passed and were inspected. Final review also
+reproduced and corrected directory-descriptor close retries and index-stage
+setup cleanup; the affected gate passed70tests in3.00s. See
+[T3 evidence](t3-traffic-interface-evidence.md). Native macOS and genuine
+secure/baseline capture evidence remain pending; Linux synthetic-fixture
+evidence does not replace them. Branch/worktree retained; no merge or push.

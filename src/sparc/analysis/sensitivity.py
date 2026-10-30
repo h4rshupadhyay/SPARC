@@ -9,7 +9,7 @@ from Crypto.Cipher import AES
 
 from .models import Difference
 from .models import LabResult
-from .models import Trial
+from .models import Trial, CustomTrial
 from ..models import SparcError
 
 
@@ -101,6 +101,21 @@ def sensitivity_trial(seed: int, case_index: int, mode: str, bit_index: int) -> 
         modified_ciphertext=modified_ciphertext,
         difference=compare_ciphertexts(baseline_ciphertext, modified_ciphertext),
     )
+
+
+def custom_sensitivity_trial(key: bytes, block: bytes, mode: str, bit_index: int) -> Trial:
+    """Compare a single exact custom AES-256 block with one selected bit flipped."""
+    if type(key) is not bytes or len(key) != 32:
+        raise SparcError('invalid_analysis_input', 'AES-256 lab key must contain exactly 32 bytes (64 hex digits)')
+    if type(block) is not bytes or len(block) != 16:
+        raise SparcError('invalid_analysis_input', 'Sensitivity input must contain exactly 16 bytes')
+    _validate_trial_inputs(0, 0, mode, bit_index)
+    modified_key = _flip_bit(key, bit_index) if mode == 'key' else key
+    modified_block = _flip_bit(block, bit_index) if mode == 'plaintext' else block
+    baseline = AES.new(key, AES.MODE_ECB).encrypt(block)
+    changed = AES.new(modified_key, AES.MODE_ECB).encrypt(modified_block)
+    return CustomTrial(0, mode, bit_index, key, block, modified_key, modified_block,
+                 baseline, changed, compare_ciphertexts(baseline, changed), 'custom')
 
 
 def run_sensitivity(

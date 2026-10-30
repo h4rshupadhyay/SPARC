@@ -324,3 +324,15 @@ def test_writer_failure_signals_the_shared_attempt_cancel():
     assert session.join(timeout=1)
     assert attempt_cancel.is_set()
     assert len(closed) == 1
+
+
+def test_bulk_queue_is_bounded_and_lower_priority_than_text_and_control():
+    session, sock, codec, _ = _session()
+    for index in range(4): session.enqueue_bulk({'kind':'file_chunk','index':index})
+    with pytest.raises(SparcError): session.enqueue_bulk({'kind':'file_chunk','index':4})
+    session.enqueue({'kind':'chat'})
+    session.enqueue({'kind':'pong'},control=True)
+    session.start()
+    assert _wait_until(lambda:len(sock.frames)==6)
+    session.close(); assert session.join(1)
+    assert [p['kind'] for p in codec.calls]==['pong','chat']+['file_chunk']*4
