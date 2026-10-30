@@ -280,6 +280,7 @@ def test_audit_actions_and_head_fit_minimum_window():
     root.geometry("800x640")
     root.deiconify()
     _pump(root, lambda: tab._head is not None)
+    tab._raw_details.toggle.invoke()
     root.update()
 
     actions = [
