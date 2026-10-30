@@ -70,6 +70,10 @@ class Conversation(tk.Text):
 
     def render(self,entries,images):
         selected=self._entries[self._selected] if self._selected is not None and self._selected<len(self._entries) else None
+        focused=self.focus_get()
+        focus_key=getattr(getattr(focused,'master',None),'_entry_key',None)
+        focus_label=focused.cget('text') if focus_key is not None else None
+        restored_focus=False
         top,bottom=self.yview()
         follow=bottom>=.99
         self.configure(state=tk.NORMAL)
@@ -82,7 +86,10 @@ class Conversation(tk.Text):
                 self.tag_delete(tag)
         self._entries=list(entries)
         # Only the most recent sixteen images can own a decoded thumbnail.
-        previews={id(entry) for entry in [e for e in entries if e.get('kind')=='image'][-16:]}
+        candidates=[e for e in entries if e.get('kind')=='image'][-16:]
+        if selected is not None and selected.get('kind')=='image' and selected not in candidates:
+            candidates=candidates[-15:]+[selected]
+        previews={id(entry) for entry in candidates}
         for index,entry in enumerate(entries):
             tag=f'entry_{index}'
             start=self.index('end-1c')
@@ -99,9 +106,14 @@ class Conversation(tk.Text):
                 actions=images.actions(entry)
                 if actions:
                     frame=ttk.Frame(self,padding=(0,2,0,8))
+                    frame._entry_key=entry['key']
                     self._controls.append(frame)
                     for column,(label,command) in enumerate(actions):
-                        ttk.Button(frame,text=label,command=command).grid(row=0,column=column,padx=(0,6))
+                        button=ttk.Button(frame,text=label,command=command)
+                        button.grid(row=0,column=column,padx=(0,6))
+                        if focus_key==entry['key'] and focus_label==label:
+                            button.focus_set()
+                            restored_focus=True
                     self.window_create('end',window=frame,align='top')
                     self.insert('end','\n')
                 if entry.get('reason'):
@@ -115,6 +127,11 @@ class Conversation(tk.Text):
             self._selected=self._entries.index(selected)
         else:
             self._selected=len(entries)-1 if entries else None
+        if self._selected is not None:
+            ranges=self.tag_ranges(f'entry_{self._selected}')
+            if ranges: self.tag_add('sel',*ranges[:2])
+        if focus_key is not None and not restored_focus:
+            self.focus_set()
         if follow:
             self.yview_moveto(1.0)
         else:

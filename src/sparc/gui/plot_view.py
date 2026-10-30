@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from ..analysis.models import BenchmarkResult, LabResult, Trial
-from ..analysis.plots import benchmark_plots, sensitivity_plots, drawing, plots_svg
+from ..analysis.plots import benchmark_plots, sensitivity_plots, drawing, plots_svg, plot_height
 from ..storage import atomic_write
 
 _CHOICES={'Encrypt/decrypt':('encrypt','decrypt'),'Hash':('hash','recompute_hash'),
@@ -50,7 +50,7 @@ class PlotView(ttk.LabelFrame):
         self._export.state(['!disabled'] if self.plots else ['disabled'])
         self.status.set('Measured results; missing values remain unavailable. SVG exports use these same data and units.'
                         if self.plots else 'No graphable measurements for the selected operations. Run a benchmark or sensitivity trial.')
-        self.canvas.configure(height=360*len(self.plots) if self.plots else 60)
+        self.canvas.configure(height=sum(plot_height(p) for p in self.plots) if self.plots else 60)
         self.draw()
 
     def schedule_draw(self):
@@ -63,9 +63,9 @@ class PlotView(ttk.LabelFrame):
         if self._closed: return
         self.canvas.delete('all')
         width=max(380,self.canvas.winfo_width())
-        for index,plot in enumerate(self.plots):
-            offset=index*360
-            for mark in drawing(plot,width,360):
+        offset=0
+        for plot in self.plots:
+            for mark in drawing(plot,width,plot_height(plot)):
                 xy=tuple(value+(offset if i%2 else 0) for i,value in enumerate(mark.xy))
                 if mark.kind=='text':
                     self.canvas.create_text(*xy,text=mark.text,fill=mark.color,anchor=mark.anchor,
@@ -76,6 +76,7 @@ class PlotView(ttk.LabelFrame):
                     kwargs=dict(fill=mark.color,width=1.5)
                     if mark.dashed: kwargs['dash']=(5,4)
                     self.canvas.create_line(*xy,**kwargs)
+            offset+=plot_height(plot)
 
     def export(self):
         if not self.plots or self._closed: return

@@ -69,3 +69,13 @@ def test_geometry_is_finite_for_zero_single_workload_and_nan():
                 if value and not value.endswith('%'):
                     import math
                     assert math.isfinite(float(value))
+
+
+def test_plot_labels_have_distinct_workload_positions_and_horizontal_units():
+    from sparc.analysis.plots import benchmark_plots,drawing
+    plot=benchmark_plots(benchmark())[0]
+    marks=drawing(plot)
+    ticks=[m for m in marks if m.kind=='text' and m.text in ('64','1024','16384')]
+    assert ticks[1].xy[0]-ticks[0].xy[0]>100
+    assert next(m for m in marks if m.text==plot.y_label).angle==0
+    assert ticks[-1].anchor=='e'

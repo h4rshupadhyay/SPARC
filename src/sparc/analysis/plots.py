@@ -63,9 +63,9 @@ def benchmark_plots(result: BenchmarkResult, operations=('encrypt','decrypt')) -
         rate.append(Series(label,tuple((r['payload_bytes'],_value(r.get(field),1048576)) for r in matching),color))
     if not duration: return []
     return [Plot('Network verified receipt duration' if network else 'Local cryptographic duration',
-                 'Payload (bytes)','Mean duration (µs)',tuple(duration),result.complete),
+                 'Payload (bytes; workload categories)','Mean duration (µs)',tuple(duration),result.complete),
             Plot('Network verified goodput' if network else 'Local cryptographic throughput',
-                 'Payload (bytes)','Verified network goodput (MiB/s)' if network else 'Local cryptographic throughput (MiB/s)',
+                 'Payload (bytes; workload categories)','Verified network goodput (MiB/s)' if network else 'Local cryptographic throughput (MiB/s)',
                  tuple(rate),result.complete)]
 
 
@@ -88,22 +88,27 @@ def sensitivity_plots(result: LabResult | Trial) -> list[Plot]:
     return plots
 
 
+def plot_height(plot: Plot) -> int:
+    return 360 + max(0, (len(plot.series)+1)//2-1)*36
+
+
 def drawing(plot: Plot,width=900,height=360) -> list[Mark]:
     """Layout once; both native and exported graphs consume these exact marks."""
-    width=max(380,width); height=max(300,height)
-    left,right,top,bottom=88,width-28,64,height-106
+    width=max(380,width); height=max(plot_height(plot),height)
+    extra=plot_height(plot)-360
+    left,right,top,bottom=88,width-28,100,height-106-extra
     xs=sorted({x for series in plot.series for x,y in series.points})
     values=[y for series in plot.series for x,y in series.points if y is not None]
     upper=max(values,default=1)*1.1 or 1
-    # Numeric workload spacing keeps the axis honest; a single value is centered.
+    # Workload categories are explicitly labeled and evenly spaced to keep ticks readable.
     xlow,xhigh=(min(xs),max(xs)) if xs else (0,1)
     def point(x,y):
-        px=(left+right)/2 if xhigh==xlow else left+(x-xlow)/(xhigh-xlow)*(right-left)
+        px=(left+right)/2 if len(xs)<2 else left+xs.index(x)/(len(xs)-1)*(right-left)
         return (px,bottom-y/upper*(bottom-top))
     marks=[Mark('text',(left,20),text=plot.title),
            Mark('text',(right,20),text='Complete' if plot.complete else 'Incomplete',anchor='e'),
-           Mark('text',((left+right)/2,height-70),text=plot.x_label,anchor='center'),
-           Mark('text',(19,(top+bottom)/2),text=plot.y_label,anchor='center',angle=90)]
+           Mark('text',((left+right)/2,height-65-extra),text=plot.x_label,anchor='center'),
+           Mark('text',(left,62),text=plot.y_label)]
     for i in range(5):
         value=upper*i/4
         y=point(xlow,value)[1]
@@ -113,7 +118,7 @@ def drawing(plot: Plot,width=900,height=360) -> list[Mark]:
     labels=dict(plot.ticks)
     for x in xs:
         px=point(x,0)[0]
-        marks.append(Mark('text',(px,bottom+16),text=labels.get(x,f'{x:g}'),anchor='center'))
+        marks.append(Mark('text',(px,bottom+16),text=labels.get(x,f'{x:g}'),anchor='w' if x==xlow else ('e' if x==xhigh else 'center')))
     unavailable=False
     for index,series in enumerate(plot.series):
         segment=[]
@@ -128,12 +133,12 @@ def drawing(plot: Plot,width=900,height=360) -> list[Mark]:
             segment.extend((px,py))
             marks.append(Mark('circle',(px,py),series.color))
         flush()
-        lx=left+(index%3)*(right-left)/3
-        ly=height-44+(index//3)*18
+        lx=left+(index%2)*(right-left)/2
+        ly=height-28-extra+(index//2)*36
         marks.extend([Mark('line',(lx,ly,lx+18,ly),series.color,dashed=series.dashed),
                       Mark('text',(lx+24,ly),series.color,text=series.label)])
     if unavailable:
-        marks.append(Mark('text',(left,42),text='Unavailable measurements appear as gaps.'))
+        marks.append(Mark('text',(right,82),text='Unavailable measurements appear as gaps.',anchor='e'))
     return marks
 
 
@@ -162,13 +167,17 @@ def _svg_element(plot,width,height):
 
 
 def plot_svg(plot: Plot,width=900,height=360) -> str:
-    width=max(380,width); height=max(300,height)
+    width=max(380,width); height=max(plot_height(plot),height)
     return ET.tostring(_svg_element(plot,width,height),encoding='unicode')
 
 
 def plots_svg(plots: list[Plot],width=900,height=360) -> str:
-    root=ET.Element('svg',xmlns='http://www.w3.org/2000/svg',width=str(width),height=str(height*len(plots)),
-                    viewBox=f'0 0 {width} {height*len(plots)}')
-    for index,plot in enumerate(plots):
-        child=_svg_element(plot,width,height); child.set('y',str(index*height)); root.append(child)
+    heights=[max(height,plot_height(plot)) for plot in plots]
+    total=sum(heights)
+    root=ET.Element('svg',xmlns='http://www.w3.org/2000/svg',width=str(width),height=str(total),
+                    viewBox=f'0 0 {width} {total}')
+    offset=0
+    for plot,plot_h in zip(plots,heights):
+        child=_svg_element(plot,width,plot_h); child.set('y',str(offset)); root.append(child)
+        offset+=plot_h
     return ET.tostring(root,encoding='unicode')

@@ -54,7 +54,7 @@ class ChatTab:
         inspector_frame = ttk.Frame(body)
         inspector_frame.columnconfigure(0, weight=1)
         inspector_frame.rowconfigure(0, weight=1)
-        self._inspector = tk.Text(inspector_frame, height=13, wrap=tk.WORD, state=tk.DISABLED)
+        self._inspector = tk.Text(inspector_frame, height=6, wrap=tk.WORD, state=tk.DISABLED)
         inspector_scroll = ttk.Scrollbar(
             inspector_frame, orient=tk.VERTICAL, command=self._inspector.yview
         )
@@ -63,6 +63,15 @@ class ChatTab:
         inspector_scroll.grid(row=0, column=1, sticky="ns")
         body.add(history_frame, weight=3)
         body.add(inspector_frame, weight=2)
+        last_height = [0]
+        def layout_conversation(event):
+            if event.height > 100 and event.height != last_height[0]:
+                last_height[0] = event.height
+                line_height = int(self._inspector.tk.call(
+                    'font', 'metrics', self._inspector.cget('font'), '-linespace'))
+                inspector_height = min(event.height * .6, max(event.height * .35, line_height * 5 + 8))
+                body.sashpos(0, int(event.height - inspector_height))
+        body.bind('<Configure>', layout_conversation, add='+')
 
         compose = ttk.Frame(frame)
         compose.grid(row=2, column=0, sticky="ew", pady=(8, 0))
@@ -184,7 +193,10 @@ class ChatTab:
         selection = self._history.curselection()
         index = selection[0] if selection else -1
         if 0 <= index < len(self._entries):
-            self._show_inspection(self._entries[index])
+            if self._entries[index].get('kind') == 'image':
+                self._refresh_history()
+            else:
+                self._show_inspection(self._entries[index])
 
     def _show_inspection(self, entry: dict) -> None:
         inspection = entry.get("inspection")

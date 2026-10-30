@@ -119,3 +119,45 @@ def test_reading_old_history_preserves_scroll_position_on_new_message():
         tab.handle_event(_message('f'*32,'latest message')); root.update()
         assert abs(tab._history.yview()[0]-before)<.02
     finally: tab.close(); root.destroy()
+
+
+def test_selecting_an_older_image_reloads_its_evicted_preview(tmp_path):
+    from PIL import Image
+    root,tab,_=_make_tab(ImageService())
+    try:
+        paths=[]
+        for i in range(18):
+            p=tmp_path/f'image{i}.png'; Image.new('RGB',(10,10),(i,0,0)).save(p); paths.append(p)
+            tab.handle_event(transfer(tid=f'{i:032x}',status='verified',path=p))
+        tab._history.select(17)
+        _pump(root,lambda:str(paths[17]) in tab._images._thumbs,timeout=4)
+        assert str(paths[0]) not in tab._images._thumbs
+        tab._history.select(0)
+        _pump(root,lambda:str(paths[0]) in tab._images._thumbs,timeout=3)
+        assert str(paths[0]) in tab._images._thumbs
+        assert tab._images.thumbnail_count<=16
+    finally: tab.close(); root.destroy()
+
+
+def test_transfer_progress_keeps_keyboard_focus_on_cancel_control():
+    root,tab,_=_make_tab(ImageService())
+    try:
+        root.deiconify(); root.update()
+        tab.handle_event(ServiceEvent('state',dict(state='connected')))
+        tab.handle_event(transfer(origin='outgoing',status='transferring'))
+        cancel=button(tab,'Cancel transfer'); cancel.focus_force(); root.update()
+        assert root.focus_get()==cancel
+        tab.handle_event(transfer(origin='outgoing',status='transferring'))
+        root.update()
+        assert root.focus_get()==button(tab,'Cancel transfer')
+    finally: tab.close(); root.destroy()
+
+
+def test_image_history_has_room_for_preview_after_window_resize():
+    root,tab,_=_make_tab(ImageService())
+    try:
+        tab.widget.master.pack_configure(fill='both',expand=True)
+        root.geometry('1000x850'); root.deiconify(); root.update()
+        body=tab._history.master.master
+        assert tab._history.winfo_height()>body.winfo_height()*.55
+    finally: tab.close(); root.destroy()

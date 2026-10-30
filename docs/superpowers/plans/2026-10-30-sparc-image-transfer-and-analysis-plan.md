@@ -58,16 +58,16 @@ ciphertext plus total ciphertext length for visible truncation.
 Audit accepts `image_received` evidence from `file_complete` and `image_delivered`
 evidence from `file_result`, binding transfer ID, full hash, and size.
 
-- [ ] Write tests for all seven unsigned/signed schemas, strict types/bounds,
+- [x] Write tests for all seven unsigned/signed schemas, strict types/bounds,
   unsafe names, canonical Base64, chunk hash/length, and projected fields.
-- [ ] Run `.venv/bin/python -m pytest tests/unit/test_file_protocol.py -q`;
+- [x] Run `.venv/bin/python -m pytest tests/unit/test_file_protocol.py -q`;
   expect missing file API/unsupported kinds before implementation.
-- [ ] Implement strict schemas, chunk hash recomputation, signing projections,
+- [x] Implement strict schemas, chunk hash recomputation, signing projections,
   bounded record inspections, and evidence validation without changing text.
-- [ ] Verify a maximum-size chunk round-trips through real paired codecs under
+- [x] Verify a maximum-size chunk round-trips through real paired codecs under
   128 KiB; tampered hash/signature fails closed; retained completion evidence
   verifies and mismatched metadata is rejected.
-- [ ] Run the new tests plus existing messages/records/audit-format tests;
+- [x] Run the new tests plus existing messages/records/audit-format tests;
   expect all pass. Commit only task-owned files.
 
 ## Task 2: Bounded image decoding and file publication
@@ -80,12 +80,12 @@ test `tests/unit/test_images.py`.
 imports Pillow lazily, strict decoder whitelist, bounded first-frame decode.
 Pin a maintained Python-3.10-compatible release after checking package metadata.
 
-- [ ] Write tests using small actual PNG/JPEG/GIF/WebP fixtures for detection,
+- [x] Write tests using small actual PNG/JPEG/GIF/WebP fixtures for detection,
   preserved source bytes, thumbnail aspect ratio, malformed/truncated formats,
   pixel bounds, and optional-dependency failure.
-- [ ] Run `.venv/bin/python -m pytest tests/unit/test_images.py -q`; expect missing API.
-- [ ] Implement decoder/thumbnail helpers with actual format checks and limits.
-- [ ] Run that file; expect all pass. Commit task files/dependency pin.
+- [x] Run `.venv/bin/python -m pytest tests/unit/test_images.py -q`; expect missing API.
+- [x] Implement decoder/thumbnail helpers with actual format checks and limits.
+- [x] Run that file; expect all pass. Commit task files/dependency pin.
 
 ## Task 3: Per-session transfer coordinator and real-peer delivery
 
@@ -105,21 +105,21 @@ peer fingerprint, latest inspection, and timing/goodput when available.
 Add `ActiveSession.enqueue_bulk(payload)` with a four-item low-priority queue;
 control, text, then bulk ordering preserves interactive traffic.
 
-- [ ] Write tests for whole-file streaming/chunk boundaries, four-chunk window,
+- [x] Write tests for whole-file streaming/chunk boundaries, four-chunk window,
   rejection/cancel/timeouts, unknown/duplicate IDs, tombstone bounds, source
   changes, hash/size mismatch, destination collision/symlink, disk/audit failures,
   publication uncertainty, stale session callbacks, and finite cleanup.
-- [ ] Run new tests; expect missing coordinator/service APIs and bulk queue.
-- [ ] Implement coordinator and atomic no-overwrite publication using exclusive
+- [x] Run new tests; expect missing coordinator/service APIs and bulk queue.
+- [x] Implement coordinator and atomic no-overwrite publication using exclusive
   temporary files and link/unlink publication; directory-sync failure leaves
   published data unconfirmed, never deleted. Sender completion waits for result.
-- [ ] Wire exact-session ownership into public APIs, payload/writer/poll/close
+- [x] Wire exact-session ownership into public APIs, payload/writer/poll/close
   hooks. Keep disk work off reader/writer threads and progress events coalesced
   or bounded without blocking liveness. Reserve mandatory terminal events.
-- [ ] Real loopback test sends representative images both ways, checks complete
+- [x] Real loopback test sends representative images both ways, checks complete
   byte equality/hashes/audit evidence, and sends text during transfer. Cover lost
   final result, cancel, collision, and disconnect with no partial-file leakage.
-- [ ] Run new tests plus existing writer/service/heartbeat/availability tests;
+- [x] Run new tests plus existing writer/service/heartbeat/availability tests;
   expect all pass. Commit only task files.
 
 ## Task 4: Chat image attachments and mixed conversation
@@ -134,14 +134,14 @@ inline transfer controls, and stable scrolling. `ImageChat` owns the attachment
 composer, bounded preview workers/cache, image events and inspector data;
 Chat owns chronological mixed entries and routes state/image events.
 
-- [ ] Write real Tk tests for Attach image/Send image, preserved text drafts,
+- [x] Write real Tk tests for Attach image/Send image, preserved text drafts,
   interleaved ordering, accept/reject/cancel, progress, verified preview gating,
   keyboard selection, scroll preservation, history/cache bounds and close safety.
-- [ ] Run new tests; expect absent attachment/conversation behavior.
-- [ ] Implement native themed controls consistent with existing Chat. Selection
+- [x] Run new tests; expect absent attachment/conversation behavior.
+- [x] Implement native themed controls consistent with existing Chat. Selection
   remains keyboard accessible; send-text and attachment workers are independent.
   Active image controls survive history pruning; one latest inspection is shown.
-- [ ] Run new and existing chat/app/scrolling tests; expect all pass. Commit.
+- [x] Run new and existing chat/app/scrolling tests; expect all pass. Commit.
 
 ## Task 5: Analysis graph models, Canvas/SVG, and metric labels
 
@@ -155,16 +155,16 @@ operations)->list[Plot]`, `sensitivity_plots(result)->list[Plot]`,
 axes, legend, incomplete state, and gaps for missing data. `PlotView` renders
 plots and offers operation selection + SVG export without rerunning benchmarks.
 
-- [ ] Write tests for numeric workload sorting, microseconds/MiB conversions,
+- [x] Write tests for numeric workload sorting, microseconds/MiB conversions,
   absent/zero values, local/network separation, escaping, SVG labels/data,
   correct sensitivity expectation lines, and invalid/incomplete values.
-- [ ] Run new unit tests; expect missing plot API.
-- [ ] Implement shared plot data/geometry and SVG; implement Canvas view using
+- [x] Run new unit tests; expect missing plot API.
+- [x] Implement shared plot data/geometry and SVG; implement Canvas view using
   the same geometry, coalesced resize, and native labels/operation controls.
-- [ ] Add a Graphs area in Analysis and clear stale plots on unrelated results.
+- [x] Add a Graphs area in Analysis and clear stale plots on unrelated results.
   Label byte metric as character-level proxy; retain raw CSV fields for backward
   compatibility and expand definitions with coursework vs model expectations.
-- [ ] Real Tk tests cover rendered plot contents, operation filtering, stale
+- [x] Real Tk tests cover rendered plot contents, operation filtering, stale
   clearing, export, resizing/close, and existing analysis tables. Expect pass;
   commit task files.
 
@@ -173,14 +173,14 @@ plots and offers operation selection + SVG export without rerunning benchmarks.
 **Files:** Update README and approved spec status; create
 `docs/image-transfer-and-analysis-evidence.md`. Keep existing dirty ledgers intact.
 
-- [ ] Run an actual two-peer GUI/loopback smoke with text and images and inspect
+- [x] Run an actual two-peer GUI/loopback smoke with text and images and inspect
   screenshots of Chat and graphs. Exercise resize and close during work.
-- [ ] Document install/update requirements, attachment flow, verification states,
+- [x] Document install/update requirements, attachment flow, verification states,
   definitions and graph exports; record actual commands/results and limits.
-- [ ] Run `.venv/bin/python -m pytest -q --tb=short` with available TShark path;
+- [x] Run `.venv/bin/python -m pytest -q --tb=short` with available TShark path;
   inspect the complete result. Investigate reproduced failures before claiming
   completion. Run `git diff --check` and dependency consistency checks.
-- [ ] Review the complete feature diff against this plan/spec solo, particularly
+- [x] Review the complete feature diff against this plan/spec solo, particularly
   the Review Focus conditions. Add RED/GREEN regressions for confirmed defects.
-- [ ] Commit only feature/evidence files. Report results, known platform limits,
+- [x] Commit only feature/evidence files. Report results, known platform limits,
   and any unresolved failures; no merge or push.

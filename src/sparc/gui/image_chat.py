@@ -49,9 +49,11 @@ class ImageChat:
     def thumbnail_count(self): return len(self._thumbs)
 
     @staticmethod
-    def _photo(image):
+    def _photo(image, maximum=(320,180)):
         from PIL import ImageTk
-        return ImageTk.PhotoImage(image)
+        display = image.copy()
+        display.thumbnail(maximum)
+        return ImageTk.PhotoImage(display)
 
     def state(self):
         connected=self.chat._connected and not self._closed
@@ -94,7 +96,7 @@ class ImageChat:
         if value[0]=='attachment':
             _,path,info,thumb,size,digest=value
             self._attachment=path
-            self._attachment_photo=self._photo(thumb)
+            self._attachment_photo=self._photo(thumb,(160,100))
             self._attachment_label.configure(image=self._attachment_photo)
             self._attachment_details.configure(text=f'Original image · {path.name}\n{info.format} · {info.width} × {info.height} · {size:,} bytes\nSHA-256: {digest}')
             self._attachment_frame.grid(row=2,column=0,columnspan=2,sticky='ew')
@@ -214,6 +216,8 @@ class ImageChat:
               f"Whole-file SHA-256: {entry.get('sha256') or 'unavailable'}",
               f"Bytes stored/confirmed: {entry.get('bytes_done',0)} / {entry.get('size',0)}",
               'Ciphertext below is a bounded sample of the latest image chunk.']
+        hash_ns=entry.get('hash_ns')
+        if hash_ns: rows.append(f'File hashing including I/O: {hash_ns/1000:g} µs')
         elapsed=entry.get('elapsed_ns')
         if elapsed: rows.append(f'Local transfer duration: {elapsed/1e9:g} s')
         goodput=entry.get('goodput_bytes_s')

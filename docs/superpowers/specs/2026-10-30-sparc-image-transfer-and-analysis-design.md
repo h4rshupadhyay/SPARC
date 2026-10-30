@@ -1,7 +1,7 @@
 # SPARC image transfer and analysis completion
 
 Date: 2026-10-30 (Asia/Kolkata)
-Status: Proposed design for review; implementation not started.
+Status: Approved and implemented on 2026-10-30; see `docs/image-transfer-and-analysis-evidence.md` for verification and inherited failures.
 Execution: Solo, as requested. Existing unfinished traffic-analysis changes are preserved.
 
 ## Intent and decisions

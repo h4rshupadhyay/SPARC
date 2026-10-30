@@ -1,6 +1,6 @@
 # SPARC
 
-SPARC is a secure peer-to-peer text communication and analysis lab built with
+SPARC is a secure peer-to-peer text/image communication and analysis lab built with
 Python and Tkinter. It combines authenticated IPv4/TCP messaging, encrypted
 local identities, signed audit records, and reproducible analysis tools.
 
@@ -9,16 +9,18 @@ local identities, signed audit records, and reproducible analysis tools.
 - **Connection:** manual listener and peer configuration, first-contact
   fingerprint approval, remembered-peer trust, refreshable local IP addresses,
   and bounded reconnection.
-- **Chat:** Unicode and multiline text protected with AES-256-GCM and Ed25519
+- **Chat:** Unicode text and inline image attachments protected with AES-256-GCM and Ed25519
   signatures, authenticated X25519 session establishment, verified delivery
-  receipts, replay checks, and public record inspection.
+  receipts, replay checks, public record inspection, receiver approval, and
+  byte-for-byte verified image files.
 - **Audit:** signed hash-chain logs, retained checkpoints, and cancellable
   verification. Detecting a deleted log tail requires an independently retained
   checkpoint.
 - **Analysis:** synthetic AES sensitivity trials, local cryptographic
   benchmarks, verified-receipt network measurements, CPU/RSS sampling,
   timed signature specimens, collision/preimage/second-preimage hashing
-  experiments, operation metrics, and CSV exports.
+  experiments, operation metrics, performance/sensitivity graphs, CSV exports,
+  and standalone SVG graph exports.
 
 Traffic Analysis is in progress. Capture normalization, traffic indexing, and
 the traffic CLI/GUI are not yet completed features. See the
@@ -114,6 +116,30 @@ generation on outgoing messages and verification on incoming messages, in
 microseconds. Missing timings are labeled unavailable. These are local
 operation durations; sender timings are not transmitted to the receiver.
 
+### Send images in Chat
+
+Update **both peers** with `python -m pip install -r requirements-dev.txt`.
+The image preview dependency is Pillow 12.3.0, compatible with Python 3.10.
+Older SPARC peers do not understand image-transfer records.
+
+In **Chat**, choose **Attach image**, inspect the original preview and SHA-256,
+then choose **Send image**. PNG, JPEG, GIF, and WebP files up to 100 MiB are
+supported; previews are limited to 20 million pixels and show the first frame.
+Your text draft stays intact and text chat remains available during transfer.
+
+The receiver uses **Accept and save** or **Reject** on the incoming attachment.
+Choose a new destination filename; existing files are never overwritten.
+The recovered preview appears in the conversation after authenticated transfer,
+matching whole-file hash/size checks, and file publication. All original file
+bytes are preserved, including animated frames; previews do not transcode files.
+
+Select an image entry to inspect its hash, latest chunk's signature, bounded
+Base64 ciphertext, authentication tag, and local encryption/decryption timings.
+Progress counts stored/confirmed bytes. **Verified** on the sender requires the
+receiver's signed final result. **Unconfirmed** means that confirmation was not
+obtained; the receiver may already have saved the file. Cancel or disconnect
+removes owned partial files, and a retry starts a new transfer.
+
 ## Standalone analysis
 
 Run synthetic sensitivity trials and local benchmarks without a connected peer
@@ -142,11 +168,25 @@ follow [NIST's hash-function guidance](https://csrc.nist.gov/Projects/hash-funct
 key generation and encoding. Local benchmark signature rows display
 microseconds; CSV timing fields retain nanoseconds.
 
+**Analysis → Graphs** plots the latest benchmark's mean operation duration and
+throughput against payload size. Select encryption/decryption, hashing,
+signing/verification, or all operations. Network runs show verified receipt
+duration and network goodput separately. Missing measurements appear as gaps;
+incomplete runs retain their label. **Export graphs SVG…** saves the visible
+graphs with their labels, units, and completion state.
+
+Sensitivity trials plot observed values alongside model expectations: 50% bit
+change, 99.609375% byte change, and 93.75% lowercase hex-character change.
+**Byte change (character-level proxy)** uses raw ciphertext bytes; the course's
+100% character-level target is displayed separately. Neither that target nor
+the model expectations are forced pass/fail outcomes or proof of security.
+
 ## Demonstrations and evidence
 
 - [Progress-check demo and capture procedure](docs/progress-check-demo.md)
 - [Evidence map, measurement fields, and acceptance checklist](docs/progress-check-evidence.md)
 - [Identity encryption and platform verification evidence](docs/f1-identity-at-rest-evidence.md)
+- [Image transfer and graphical analysis evidence](docs/image-transfer-and-analysis-evidence.md)
 - [Implementation status](docs/implementation-status.md)
 
 Run the independent-process loopback demonstration from an interactive terminal:

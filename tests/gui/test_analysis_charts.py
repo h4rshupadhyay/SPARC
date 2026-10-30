@@ -42,3 +42,13 @@ def test_graph_resize_is_coalesced_and_close_cancels_redraw():
         assert tab._plots._draw_id is None
         root.update()
     finally: tab.close(); root.destroy()
+
+
+def test_failed_analysis_does_not_leave_a_stale_graph_as_current_result():
+    root,tab=_make_tab()
+    try:
+        tab._job_kind='local'; tab._job_result('result',benchmark())
+        assert tab._plots.plots
+        tab._job_kind='hash'; tab._job_result('error',ValueError('invalid input'))
+        assert not tab._plots.plots
+    finally: tab.close(); root.destroy()

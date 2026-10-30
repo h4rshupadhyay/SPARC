@@ -717,6 +717,7 @@ class AnalysisTab:
         self._hash_cancel = None
         self._refresh_controls()
         if kind == "error":
+            self._plots.show(None)
             self._status.set(f"Analysis failed: {value}")
             return
         if kind != "result":
