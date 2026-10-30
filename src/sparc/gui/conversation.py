@@ -15,10 +15,13 @@ class Conversation(tk.Text):
         self._entries=[]
         self._selected=None
         self._controls=[]
+        self._follow_end=True
+        self._scroll_id=None
         self.tag_configure('heading',spacing1=16,spacing3=4,foreground=MUTED,font=appearance.small)
         self.tag_configure('body',spacing3=16)
         self.tag_configure('empty_title',font=appearance.heading,spacing1=32,spacing3=8)
         self.tag_configure('empty_help',foreground=MUTED,spacing3=12)
+        self.tag_raise('sel')
         self.bind('<Configure>', self._layout_messages, add='+')
         self.bind('<Button-1>',self._click)
         self.bind('<Up>',lambda e:self._step(-1))
@@ -41,6 +44,20 @@ class Conversation(tk.Text):
         margin=max(20,self.winfo_width()-820)
         self.tag_configure('incoming',lmargin1=20,lmargin2=20,rmargin=margin)
         self.tag_configure('outgoing',lmargin1=margin,lmargin2=margin,rmargin=20)
+        if self._follow_end and self._scroll_id is None:
+            self._scroll_id=self.after_idle(self._follow_latest)
+
+    def _follow_latest(self):
+        self._scroll_id=None
+        if self._follow_end:
+            self.count('1.0','end','update','ypixels')
+            self.yview_moveto(1.0)
+
+    def yview(self,*args):
+        result=super().yview(*args)
+        if args:
+            self._follow_end=super().yview()[1]>=.99
+        return result
 
     def _click(self,event):
         self.focus_set()
@@ -51,6 +68,7 @@ class Conversation(tk.Text):
 
     def _wheel(self,amount):
         self.yview_scroll(amount,'units')
+        self._follow_end=self.yview()[1]>=.99
         return 'break'
 
     def _step(self,delta):
@@ -70,10 +88,14 @@ class Conversation(tk.Text):
             self.tag_add('sel',*ranges[:2])
             if reveal:
                 self.see(ranges[0])
+                self._follow_end=self.yview()[1]>=.99
         self._on_select()
         return 'break'
 
     def clear(self):
+        if self._scroll_id is not None:
+            self.after_cancel(self._scroll_id)
+            self._scroll_id=None
         self.configure(state=tk.NORMAL)
         self.delete('1.0','end')
         for widget in self._controls:
@@ -90,7 +112,8 @@ class Conversation(tk.Text):
         focus_label=focused.cget('text') if focus_key is not None else None
         restored_focus=False
         top,bottom=self.yview()
-        follow=bottom>=.99
+        follow=bottom>=.99 if self.winfo_ismapped() else self._follow_end
+        self._follow_end=follow
         self.configure(state=tk.NORMAL)
         self.delete('1.0','end')
         for widget in self._controls:
@@ -153,6 +176,8 @@ class Conversation(tk.Text):
         if focus_key is not None and not restored_focus:
             self.focus_set()
         if follow:
+            if self.winfo_ismapped():
+                self.count('1.0','end','update','ypixels')
             self.yview_moveto(1.0)
         else:
             self.yview_moveto(top)

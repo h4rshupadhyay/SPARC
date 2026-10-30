@@ -143,19 +143,20 @@ def sensitivity_plots(result: LabResult | Trial) -> list[Plot]:
     return plots
 
 
-def _footer_lines(plot: Plot,width: int) -> list[str]:
+def _footer_lines(plot: Plot,width: int,measure=None) -> list[str]:
     # Conservative estimate also leaves room for native font metrics.
-    columns=max(24,(width-64)//9)
+    char_width = max(1,measure('M')) if measure else 9
+    columns=max(1,int((width-64)//char_width))
     return [part for line in (*plot.notes,*plot.context) for part in textwrap.wrap(line,columns)]
 
 
-def plot_height(plot: Plot,width=900,chart_height=260) -> int:
-    return 180 + chart_height + len(plot.series)*24 + len(_footer_lines(plot,width))*22
+def plot_height(plot: Plot,width=900,chart_height=260,*,measure=None,line_height=22) -> int:
+    return 180 + chart_height + len(plot.series)*(line_height+2) + len(_footer_lines(plot,width,measure))*line_height
 
 
-def drawing(plot: Plot,width=900,height=360,*,chart_height=260) -> list[Mark]:
+def drawing(plot: Plot,width=900,height=360,*,chart_height=260,measure=None,line_height=22) -> list[Mark]:
     """Layout once; both native and exported graphs consume these exact marks."""
-    width=max(380,width); height=max(plot_height(plot,width,chart_height),height)
+    width=max(380,width); height=max(plot_height(plot,width,chart_height,measure=measure,line_height=line_height),height)
     left,right,top,bottom=94,width-32,94,94+chart_height
     xs=sorted({x for series in plot.series for x,y in series.points}|{x for x,label in plot.ticks})
     values=[y for series in plot.series for x,y in series.points if y is not None]
@@ -213,15 +214,15 @@ def drawing(plot: Plot,width=900,height=360,*,chart_height=260) -> list[Mark]:
                           Mark('line',(px-5,py,px+5,py),series.color),
                           Mark('line',(px-5,high_y,px+5,high_y),series.color)])
         lx=32
-        ly=bottom+78+index*24
+        ly=bottom+78+index*(line_height+2)
         marks.extend([Mark('line',(lx,ly,lx+18,ly),series.color,dashed=series.dashed),
                       Mark('text',(lx+24,ly),series.color,text=series.label)])
     if unavailable:
         marks.append(Mark('text',(right,82),text='Unavailable measurements appear as gaps.',anchor='e'))
-    footer_y=bottom+78+len(plot.series)*24
-    for line in _footer_lines(plot,width):
+    footer_y=bottom+78+len(plot.series)*(line_height+2)
+    for line in _footer_lines(plot,width,measure):
         marks.append(Mark('text',(32,footer_y),text=line))
-        footer_y+=22
+        footer_y+=line_height
     return marks
 
 

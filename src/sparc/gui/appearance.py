@@ -71,7 +71,7 @@ def install(widget) -> Appearance:
                     fieldbackground=SURFACE, background=SURFACE)
     style.configure('Treeview.Heading', font=appearance.body, padding=(8, 6), background=SOFT)
     style.map('Treeview', background=[('selected', ACCENT)], foreground=[('selected', SURFACE)])
-    for kind in ('Text', 'Listbox', 'Entry', 'Spinbox', 'Menu'):
+    for kind in ('Text', 'Listbox', 'Entry', 'Spinbox', 'Menu', 'TEntry', 'TSpinbox', 'TCombobox'):
         root.option_add(f'*{kind}.font', appearance.body)
     return appearance
 
@@ -79,7 +79,7 @@ def install(widget) -> Appearance:
 def text_options(appearance: Appearance, *, technical=False) -> dict:
     return dict(font=appearance.mono if technical else appearance.body, background=SURFACE,
                 foreground=TEXT, insertbackground=TEXT, selectbackground=ACCENT,
-                selectforeground=SURFACE, borderwidth=0, highlightthickness=1,
+                selectforeground=SURFACE, inactiveselectbackground=ACCENT, borderwidth=0, highlightthickness=1,
                 highlightbackground=BORDER, highlightcolor=ACCENT, padx=12, pady=10)
 
 

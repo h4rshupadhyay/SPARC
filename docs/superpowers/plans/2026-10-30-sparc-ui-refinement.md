@@ -30,30 +30,30 @@
 
 **Interfaces:** `appearance.install(widget)` returns root-owned fonts/palette; `Disclosure(parent, text)` exposes `body` and `toggle`. Chat retains existing event/inspection APIs and adds an explicit inspector toggle.
 
-- [ ] Add failing real-Tk tests for the empty conversation, inspector disclosure with selected evidence and preserved draft, attachment beside Send, shared font ownership.
-- [ ] Run `.venv/bin/python -m pytest tests/gui/test_ui_refinement.py -q`; observe expected failures.
-- [ ] Implement shared appearance and native Chat layout, preserving all transfer/evidence behavior.
-- [ ] Run Chat/image/app/refinement tests; expect all passing. Commit only owned files.
+- [x] Add failing real-Tk tests for the empty conversation, inspector disclosure with selected evidence and preserved draft, attachment beside Send, shared font ownership.
+- [x] Run `.venv/bin/python -m pytest tests/gui/test_ui_refinement.py -q`; observe expected failures.
+- [x] Implement shared appearance and native Chat layout, preserving all transfer/evidence behavior.
+- [x] Run Chat/image/app/refinement tests; expect all passing. Commit only owned files.
 
 ### Task 2: Connection and Audit hierarchy
 
-**Files:** connection.py; audit_view.py; tests/gui/test_ui_refinement.py; tests/gui/test_audit_view.py.
+**Files:** connection.py; audit_view.py; tests/gui/test_ui_status.py; tests/gui/test_audit_view.py.
 
 **Interfaces:** Consume appearance and Disclosure. Preserve fingerprint approval fields, scroll-to-focus, audit JobController and verification reports.
 
-- [ ] Add failing tests for peer-first ordering and unverified Audit with expandable complete raw head.
-- [ ] Run new tests; observe expected failures.
-- [ ] Reorder Connection sections, lead Audit with verification state/action, disclose raw head and keep report scope stable.
-- [ ] Run connection/audit/refinement tests; expect all passing. Commit owned files.
+- [x] Add failing tests for peer-first ordering and unverified Audit with expandable complete raw head.
+- [x] Run new tests; observe expected failures.
+- [x] Reorder Connection sections, lead Audit with verification state/action, disclose raw head and keep report scope stable.
+- [x] Run connection/audit/refinement tests; expect all passing. Commit owned files.
 
 ### Task 3: Analysis navigation and complete verification
 
-**Files:** analysis_view.py; plot_view.py; plots.py if measured geometry requires it; tests/gui/test_analysis_results.py; tests/gui/test_ui_refinement.py; docs/native-ui-refinement-evidence.md.
+**Files:** analysis_view.py; plot_view.py; plots.py if measured geometry requires it; tests/gui/test_analysis_results.py; tests/gui/test_analysis_navigation.py; tests/gui/test_chat_images.py; docs/native-ui-refinement-evidence.md.
 
 **Interfaces:** ResultsView uses the Analysis workspace notebook directly; `show/select/close` retain their behavior. PlotView and exports retain category-specific data and provenance. Experiment selector only changes visible configuration frames.
 
-- [ ] Add failing tests for one row of Analysis sections and selecting the desired experiment without losing values; adapt obsolete nested-tab assertions.
-- [ ] Run the new tests; observe expected failures.
-- [ ] Flatten navigation, add the experiment selector and harmonize graph text/layout with shared appearance.
-- [ ] Run GUI and analysis plot tests. Inspect native empty/populated Chat, image offer and audit/connection/analysis states at minimum/ordinary/wide sizes in one batch; fix defects and confirm once.
-- [ ] Run full pytest and record inherited traffic failures separately. Self-review under the user's solo instruction, commit owned changes and refresh the connected two-peer demo.
+- [x] Add failing tests for one row of Analysis sections and selecting the desired experiment without losing values; adapt obsolete nested-tab assertions.
+- [x] Run the new tests; observe expected failures.
+- [x] Flatten navigation, add the experiment selector and harmonize graph text/layout with shared appearance.
+- [x] Run GUI and analysis plot tests. Inspect native empty/populated Chat, image offer and audit/connection/analysis states at minimum/ordinary/wide sizes in one batch; fix defects and confirm once.
+- [x] Run full pytest and record inherited traffic failures separately. Self-review under the user's solo instruction, commit owned changes and refresh the connected two-peer demo.

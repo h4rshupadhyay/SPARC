@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import tkinter as tk
 from tkinter import ttk
+from ..models import Endpoint
 
 from .jobs import JobController
 from .conversation import Conversation
@@ -24,6 +25,7 @@ class ChatTab:
         self._appearance = install(parent)
         self.widget = ttk.Frame(parent, padding=20)
         self._closed = False
+        self._layout_id = None
         self._connected = False
         self._entries: list[dict] = []
         self._by_key: dict[tuple[str, str], dict] = {}
@@ -62,6 +64,7 @@ class ChatTab:
         scroll.grid(row=0, column=1, sticky="ns")
         self._notice_label = ttk.Label(history_frame, text="")
         self._notice_label.grid(row=1, column=0, columnspan=2, sticky="w")
+        self._notice_label.grid_remove()
         inspector_frame = self._inspector_frame = ttk.LabelFrame(body, text='Message security', padding=12)
         inspector_frame.columnconfigure(0, weight=1)
         inspector_frame.rowconfigure(0, weight=1)
@@ -74,9 +77,10 @@ class ChatTab:
         )
         self._inspector.configure(yscrollcommand=inspector_scroll.set)
         self._inspector.grid(row=0, column=0, sticky="nsew")
+        self._inspector.bind('<Configure>', self._sync_inspector_extent, add='+')
         inspector_scroll.grid(row=0, column=1, sticky="ns")
         body.add(history_frame, stretch='always', minsize=100)
-        body.bind('<Configure>', self._layout_conversation, add='+')
+        body.bind('<Configure>', self._schedule_layout, add='+')
 
         compose = ttk.Frame(frame)
         compose.grid(row=2, column=0, sticky="ew", pady=(16, 0))
@@ -104,12 +108,13 @@ class ChatTab:
         if self._security_open.get():
             if str(self._inspector_frame) not in tuple(map(str, self._body.panes())):
                 self._body.add(self._inspector_frame, stretch='always', minsize=100)
-            self._layout_conversation()
+            self._schedule_layout()
         elif str(self._inspector_frame) in tuple(map(str, self._body.panes())):
             self._body.forget(self._inspector_frame)
 
     def _layout_conversation(self, _event=None):
-        if not self._security_open.get():
+        self._layout_id = None
+        if self._closed or not self._security_open.get():
             return
         wide = self._body.winfo_width() >= 1100 or self._body.winfo_height() < 420
         orient = tk.HORIZONTAL if wide else tk.VERTICAL
@@ -120,6 +125,14 @@ class ChatTab:
             ratio = .58 if wide and extent >= 1100 else .40
             position = int(extent * ratio)
             self._body.sash_place(0, position if wide else 0, 0 if wide else position)
+
+    def _schedule_layout(self, _event=None):
+        if not self._closed and self._layout_id is None:
+            self._layout_id = self._body.after_idle(self._layout_conversation)
+
+    def _sync_inspector_extent(self, _event=None):
+        if not self._closed:
+            self._inspector.count('1.0', 'end', 'update', 'ypixels')
 
     def handle_event(self, event) -> None:
         if self._closed:
@@ -132,6 +145,11 @@ class ChatTab:
             connected = data.get("state") == "connected"
             self._connected = connected
             self._status.set("Connected" if connected else str(data.get("state", "Disconnected")))
+            if connected:
+                peer = getattr(self.service, 'connected_peer', lambda: None)()
+                if isinstance(peer, dict) and isinstance(peer.get('endpoint'), Endpoint):
+                    endpoint = peer['endpoint']
+                    self._status.set(f'Connected · {endpoint.ip}:{endpoint.port}')
             self._send_button.state(["!disabled"] if connected and self._active_send is None else ["disabled"])
             self._images.state()
             if not connected:
@@ -220,6 +238,8 @@ class ChatTab:
 
     def _refresh_history(self) -> None:
         self._notice_label.configure(text=self._notice)
+        if self._notice:
+            self._notice_label.grid()
         self._history.render(self._entries, self._images)
         selected = self._history.curselection()
         if selected and selected[0] < len(self._entries):
@@ -286,7 +306,8 @@ class ChatTab:
         self._inspector.insert("1.0", "\n".join(rows))
         self._inspector.configure(state=tk.DISABLED)
         # Include the last wrapped ciphertext line in Tk's scroll extent.
-        self._inspector.count("1.0", "end", "update", "ypixels")
+        if self._inspector.winfo_ismapped():
+            self._inspector.count("1.0", "end", "update", "ypixels")
         self._inspector.yview_moveto(0.0)
 
     @staticmethod
@@ -363,6 +384,9 @@ class ChatTab:
         if self._closed:
             return
         self._closed = True
+        if self._layout_id is not None:
+            self._body.after_cancel(self._layout_id)
+            self._layout_id = None
         self._job.close()
         self._images.close()
         self._early_deliveries.clear()

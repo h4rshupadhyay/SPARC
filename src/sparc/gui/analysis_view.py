@@ -9,7 +9,6 @@ import os
 from dataclasses import asdict
 from pathlib import Path
 import tkinter as tk
-import tkinter.font as tkfont
 from tkinter import filedialog, ttk
 from threading import Event
 
@@ -26,6 +25,7 @@ from ..models import ServiceEvent
 from ..storage import atomic_write
 from .jobs import JobController
 from .plot_view import ResultsView
+from .appearance import install, text_options, SURFACE
 
 
 _ALLOWED_SIZES = (64, 1024, 16384)
@@ -60,6 +60,7 @@ class AnalysisTab:
 
     def __init__(self, parent: ttk.Notebook, service) -> None:
         self.service = service
+        self._appearance = install(parent)
         self.widget = ttk.Frame(parent, padding=0)
         self._closed = False
         self._busy = False
@@ -76,6 +77,7 @@ class AnalysisTab:
         self._progress_text = tk.StringVar(master=self.widget, value="No job running")
         self._mode = tk.StringVar(master=self.widget, value="plaintext")
         self._evidence_mode = tk.StringVar(master=self.widget, value="unspecified")
+        self._experiment_kind = tk.StringVar(master=self.widget, value='Performance')
         self._seed = tk.StringVar(master=self.widget, value="42")
         self._case_index = tk.StringVar(master=self.widget, value="0")
         self._bit_index = tk.StringVar(master=self.widget, value="0")
@@ -107,14 +109,13 @@ class AnalysisTab:
         self._experiments.columnconfigure(0, weight=1)
         self._experiments.rowconfigure(0, weight=1)
         self._workspace.add(self._experiments, text="Experiments")
-        self._plots = ResultsView(self._workspace, lambda: self._workspace.select(self._plots))
-        self._workspace.add(self._plots, text="Results")
-        self._canvas = tk.Canvas(self._experiments, highlightthickness=0, borderwidth=0)
+        self._plots = ResultsView(self._workspace)
+        self._canvas = tk.Canvas(self._experiments, highlightthickness=0, borderwidth=0, background=SURFACE)
         self._canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar = ttk.Scrollbar(self._experiments, orient=tk.VERTICAL, command=self._canvas.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         self._canvas.configure(yscrollcommand=scrollbar.set)
-        self._content = ttk.Frame(self._canvas, padding=12)
+        self._content = ttk.Frame(self._canvas, padding=20)
         self._canvas_window = self._canvas.create_window((0, 0), window=self._content, anchor="nw")
         self._content.columnconfigure(0, weight=1)
         self._content.bind("<Configure>", self._content_resized, add="+")
@@ -123,17 +124,24 @@ class AnalysisTab:
         self._canvas.bind("<Button-4>", self._mousewheel, add="+")
         self._canvas.bind("<Button-5>", self._mousewheel, add="+")
 
-        ttk.Label(self._content, text="Analysis laboratory", font=("TkDefaultFont", 13, "bold")).grid(
+        ttk.Label(self._content, text="Analysis laboratory", style='Title.TLabel').grid(
             row=0, column=0, sticky="w", pady=(2, 2)
         )
         ttk.Label(
             self._content,
             text="Synthetic trials and verified peer receipts. Live record keys are never used or exported.",
-            wraplength=850,
+            wraplength=850, style='Muted.TLabel',
         ).grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        selector = ttk.Frame(self._content)
+        selector.grid(row=2, column=0, sticky='ew', pady=(4, 16))
+        ttk.Label(selector, text='Experiment').pack(side='left', padx=(0, 12))
+        self._experiment_choice = ttk.Combobox(selector, textvariable=self._experiment_kind,
+            values=('Performance', 'Avalanche', 'Signature specimen', 'Hash security'), state='readonly', width=28)
+        self._experiment_choice.pack(side='left')
+        self._experiment_choice.bind('<<ComboboxSelected>>', self._select_experiment)
 
         sensitivity = ttk.LabelFrame(self._content, text="AES sensitivity", padding=8)
-        sensitivity.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        sensitivity.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         sensitivity.columnconfigure(0, weight=1)
         fields = ttk.Frame(sensitivity)
         fields.grid(row=0, column=0, sticky="ew")
@@ -209,7 +217,7 @@ class AnalysisTab:
         self._audit_metric_button.grid(row=3, column=0, sticky="ew")
 
         specimen = ttk.LabelFrame(self._content, text="Synthetic signature specimen", padding=8)
-        specimen.grid(row=4, column=0, sticky="ew", pady=(0, 8))
+        specimen.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         specimen.columnconfigure(1, weight=1)
         ttk.Label(specimen, text="Public key (hex)").grid(row=0, column=0, sticky="w", padx=(0, 8))
         ttk.Entry(specimen, textvariable=self._specimen_public).grid(row=0, column=1, sticky="ew")
@@ -232,7 +240,7 @@ class AnalysisTab:
         )
 
         hashing = ttk.LabelFrame(self._content, text="Hashing security analysis", padding=8)
-        hashing.grid(row=5, column=0, sticky="ew", pady=(0, 8))
+        hashing.grid(row=3, column=0, sticky="ew", pady=(0, 8))
         hashing.columnconfigure(0, weight=1)
         ttk.Label(
             hashing,
@@ -256,6 +264,9 @@ class AnalysisTab:
         seed_field.master.grid_configure(row=1)
         self._hash_button = ttk.Button(hashing, text="Run hash search", command=self._run_hash)
         self._hash_button.grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self._experiment_frames = {'Performance': performance, 'Avalanche': sensitivity,
+                                  'Signature specimen': specimen, 'Hash security': hashing}
+        self._select_experiment()
 
         result_area = ttk.LabelFrame(self._plots.details, text="Latest result details", padding=8)
         result_area.grid(row=0, column=0, sticky="nsew")
@@ -271,7 +282,7 @@ class AnalysisTab:
         self._save_button = ttk.Button(result_actions, text="Save CSV…", command=self._save_csv)
         self._save_button.grid(row=0, column=1, sticky="w", padx=(6, 0))
         self._save_button.state(["disabled"])
-        default_font = tkfont.nametofont("TkDefaultFont")
+        default_font = self._appearance.body
         style = ttk.Style(self.widget)
         style.configure(
             "Analysis.Treeview",
@@ -310,7 +321,8 @@ class AnalysisTab:
         results_xscroll = ttk.Scrollbar(result_area, orient=tk.HORIZONTAL, command=self._results.xview)
         results_xscroll.grid(row=2, column=0, sticky="ew")
         self._results.configure(xscrollcommand=results_xscroll.set)
-        self._details = tk.Text(result_area, height=5, wrap=tk.WORD, state=tk.DISABLED)
+        self._details = tk.Text(result_area, height=5, wrap=tk.WORD, state=tk.DISABLED,
+                                **text_options(self._appearance))
         self._details.grid(row=3, column=0, sticky="nsew", pady=(6, 0))
         detail_scroll = ttk.Scrollbar(result_area, orient=tk.VERTICAL, command=self._details.yview)
         detail_scroll.grid(row=3, column=1, sticky="ns", pady=(6, 0))
@@ -409,6 +421,14 @@ class AnalysisTab:
 
     def _content_resized(self, _event=None) -> None:
         self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+
+    def _select_experiment(self, _event=None):
+        for name, frame in self._experiment_frames.items():
+            if name == self._experiment_kind.get():
+                frame.grid()
+            else:
+                frame.grid_remove()
+        self._canvas.yview_moveto(0)
 
     def _canvas_resized(self, event) -> None:
         self._canvas.itemconfigure(self._canvas_window, width=event.width)

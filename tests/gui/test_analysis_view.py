@@ -652,7 +652,7 @@ def test_rendered_tables_fit_native_text_without_widening_the_tab():
     root.deiconify()
     root.geometry("800x640")
     root.update()
-    font = tkfont.nametofont("TkDefaultFont")
+    font = tkfont.nametofont(ttk.Style(root).lookup('Analysis.Treeview', 'font'), root=root)
 
     result_text = {
         "workload": "Synthetic specimen",

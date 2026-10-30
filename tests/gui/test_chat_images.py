@@ -161,3 +161,36 @@ def test_image_history_has_room_for_preview_after_window_resize():
         body=tab._history.master.master
         assert tab._history.winfo_height()>body.winfo_height()*.55
     finally: tab.close(); root.destroy()
+
+
+def test_compact_image_offer_scrolls_its_accept_action_into_view():
+    root,tab,_=_make_tab(ImageService())
+    try:
+        root.geometry('1200x1000'); root.deiconify()
+        tab.widget.master.pack_configure(fill='both',expand=True)
+        notebook=tab.widget.master
+        other=ttk.Frame(notebook); notebook.add(other,text='Other'); notebook.select(other)
+        tab.handle_event(ServiceEvent('state',dict(state='connected')))
+        tab.handle_event(_message('1'*32,'Hello Bob. Text and images share this conversation.'))
+        tab.handle_event(_message('2'*32,'Received. I can inspect the message evidence when I need it.'))
+        root.update()
+        tab.handle_event(transfer()); root.update()
+        root.geometry('800x640'); notebook.select(tab.widget); root.update()
+        accept=button(tab,'Accept and save')
+        assert accept.winfo_ismapped()
+        assert accept.winfo_rooty() >= tab._history.winfo_rooty()
+        assert accept.winfo_rooty()+accept.winfo_height() <= tab._history.winfo_rooty()+tab._history.winfo_height()
+    finally: tab.close(); root.destroy()
+
+
+def test_inspector_keeps_readable_width_after_resize_and_inline_controls():
+    root,tab,_=_make_tab(ImageService())
+    try:
+        root.geometry('800x640'); root.deiconify()
+        tab.widget.master.pack_configure(fill='both',expand=True)
+        tab.handle_event(ServiceEvent('state',dict(state='connected')))
+        tab.handle_event(transfer()); root.update()
+        root.geometry('1200x1000')
+        tab._history.select(0); root.update()
+        assert tab._inspector.winfo_width() >= 300
+    finally: tab.close(); root.destroy()

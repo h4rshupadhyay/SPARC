@@ -2,12 +2,12 @@
 
 from pathlib import Path
 import tkinter as tk
-import tkinter.font as tkfont
 from tkinter import filedialog, ttk
 
 from ..analysis.models import BenchmarkResult, LabResult, Trial
 from ..analysis.plots import benchmark_plots, sensitivity_plots, drawing, plots_svg, plot_height
 from ..storage import atomic_write
+from .appearance import install
 
 _CHOICES = {
     'Encrypt/decrypt': ('encrypt', 'decrypt'),
@@ -26,9 +26,7 @@ class PlotView(ttk.Frame):
         self.rowconfigure(2, weight=1)
         # Some desktop font configurations scale pixel fonts again. Calibrate
         # against measured metrics instead of assuming the requested size wins.
-        self._chart_font = tkfont.Font(self, family='sans-serif', size=-14)
-        self._chart_font.configure(size=-max(1, round(14 * 20 / self._chart_font.metrics('linespace'))))
-        ttk.Style(self).configure('Analysis.Chart.TButton', font=self._chart_font)
+        self._chart_font = install(self).body
         self.operation = tk.StringVar(master=self, value='Encrypt/decrypt')
         self.chart = tk.StringVar(master=self)
         controls = ttk.Frame(self)
@@ -38,7 +36,7 @@ class PlotView(ttk.Frame):
         self._chart_choice = ttk.Combobox(controls, textvariable=self.chart, state='disabled', width=28, font=self._chart_font)
         self._chart_choice.grid(row=0, column=1, sticky='ew')
         self._chart_choice.bind('<<ComboboxSelected>>', self._select_chart)
-        self._export = ttk.Button(controls, text='Export graphs SVG…', command=self.export, style='Analysis.Chart.TButton')
+        self._export = ttk.Button(controls, text='Export graphs SVG…', command=self.export)
         self._export.grid(row=0, column=2, padx=(12, 0))
         self._operations = ttk.Frame(self)
         self._operations.grid(row=1, column=0, sticky='w', pady=(0, 8))
@@ -117,17 +115,20 @@ class PlotView(ttk.Frame):
             return
         self.canvas.delete('all')
         available = max(380, self.canvas.winfo_width())
-        width = min(1100, available)
+        width = min(1500, available)
         offset = (available - width) / 2
         self._status_label.configure(wraplength=max(240, self.winfo_width() - 32))
         selected = next((plot for plot in self.plots if plot.title == self.chart.get()), None)
-        chart_height = max(140, min(320, self.canvas.winfo_height() - 172))
-        height = plot_height(selected, width, chart_height) if selected else 100
+        chart_height = max(140, min(500, int(self.canvas.winfo_height() * .52)))
+        line_height = self._chart_font.metrics('linespace') + 4
+        height = plot_height(selected, width, chart_height, measure=self._chart_font.measure,
+                             line_height=line_height) if selected else 100
         self.canvas.configure(scrollregion=(0, 0, available, height))
         if selected is None:
             self.canvas.create_text(24, 36, text='Run an experiment to see its graphs.', anchor='w')
             return
-        for mark in drawing(selected, width, height, chart_height=chart_height):
+        for mark in drawing(selected, width, height, chart_height=chart_height,
+                            measure=self._chart_font.measure, line_height=line_height):
             xy = tuple(value + (offset if i % 2 == 0 else 0) for i, value in enumerate(mark.xy))
             if mark.kind == 'text':
                 # Pixel fonts match the shared geometry and SVG at every Tk DPI.
@@ -169,16 +170,11 @@ class PlotView(ttk.Frame):
         self.plots = []
 
 
-class ResultsView(ttk.Frame):
+class ResultsView:
     """Retain the latest graph run independently from the latest detail report."""
 
-    def __init__(self, parent, reveal):
-        super().__init__(parent)
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
-        self._reveal = reveal
-        self.tabs = ttk.Notebook(self)
-        self.tabs.grid(row=0, column=0, sticky='nsew')
+    def __init__(self, parent):
+        self.tabs = parent
         self.performance = PlotView(self.tabs)
         self.avalanche = PlotView(self.tabs)
         self.details = ttk.Frame(self.tabs, padding=12)
@@ -204,7 +200,6 @@ class ResultsView(ttk.Frame):
 
     def select(self, widget):
         self.tabs.select(widget)
-        self._reveal()
 
     def close(self):
         self.performance.close()

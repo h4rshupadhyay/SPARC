@@ -23,7 +23,7 @@ def test_completed_benchmark_reveals_graphs_at_ordinary_window_size():
     try:
         root.deiconify(); root.geometry('800x640'); root.update()
         tab._job_kind='local'; tab._job_result('result',_benchmark()); root.update()
-        assert tab._workspace.tab(tab._workspace.select(),'text')=='Results'
+        assert tab._workspace.tab(tab._workspace.select(),'text')=='Performance'
         report=tab._plots
         assert report.tabs.tab(report.tabs.select(),'text')=='Performance'
         graph=report.performance
