@@ -184,3 +184,19 @@ def test_integrated_chat_expands_after_window_resize(window):
     assert tab._body.winfo_height() > 500
     app.chrome.close_button.invoke()
     assert app._closed
+
+
+def test_missing_native_adapter_keeps_frameless_close_and_cleanup(window, monkeypatch):
+    monkeypatch.setattr('sparc.gui.window_chrome.hide_decorations', lambda _: False)
+    _, chrome = shell(window)
+    assert window.overrideredirect()
+    calls = []
+
+    def close():
+        calls.append('close')
+        window.destroy()
+
+    window.protocol('WM_DELETE_WINDOW', close)
+    chrome.close_button.invoke()
+    assert calls == ['close']
+    assert window.tk.splitlist(window.tk.call('after', 'info')) == ()

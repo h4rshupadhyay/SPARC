@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import builtins
 
+import pytest
+
 from sparc.__main__ import main
 from sparc.storage import resolve_data_dir
 
@@ -142,7 +144,8 @@ def test_gui_unlock_cancel_maps_to_interrupt_exit_without_traceback(
     assert "private cancellation detail" not in captured.err
 
 
-def test_launch_setup_failure_closes_service_and_root(tmp_path, monkeypatch):
+@pytest.mark.parametrize('cleanup_fails', [False, True])
+def test_launch_setup_failure_closes_service_and_root(tmp_path, monkeypatch, cleanup_fails):
     import sparc.gui.app as app_module
     import tkinter
 
@@ -167,6 +170,8 @@ def test_launch_setup_failure_closes_service_and_root(tmp_path, monkeypatch):
     class FakeService:
         def close(self):
             calls.append("service.close")
+            if cleanup_fails:
+                raise RuntimeError('injected service cleanup failure')
 
         @classmethod
         def _from_unlocked_store(cls, _handle):

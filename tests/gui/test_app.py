@@ -87,3 +87,49 @@ def test_close_ignores_late_worker_events():
     assert service.calls == ["service.close"]
     assert destroy_calls == [threading.get_ident()]
     assert root.tk.splitlist(root.tk.call("after", "info")) == ()
+
+
+@pytest.mark.parametrize('failing_owner', ['tab', 'service'])
+def test_close_releases_every_owner_when_one_close_raises(failing_owner):
+    root = _root_or_skip()
+    service = FakeService()
+    app = SparcApp(root, service)
+    calls = []
+
+    class ClosingTab:
+        def __init__(self, name):
+            self.widget = tk.Frame(app.notebook)
+            self.name = name
+
+        def close(self):
+            calls.append(self.name)
+            if self.name == 'first' and failing_owner == 'tab':
+                raise RuntimeError('tab close failed')
+
+    def close_service():
+        calls.append('service')
+        if failing_owner == 'service':
+            raise RuntimeError('service close failed')
+
+    original_destroy = root.destroy
+
+    def destroy():
+        calls.append('root')
+        original_destroy()
+
+    service.close = close_service
+    root.destroy = destroy
+    app.add_tab('First', ClosingTab('first'))
+    app.add_tab('Second', ClosingTab('second'))
+    try:
+        with pytest.raises(RuntimeError, match=f'{failing_owner} close failed'):
+            app.close()
+        assert calls == ['first', 'second', 'service', 'root']
+        assert root.tk.splitlist(root.tk.call('after', 'info')) == ()
+        app.close()
+        assert calls == ['first', 'second', 'service', 'root']
+    finally:
+        try:
+            original_destroy()
+        except TclError:
+            pass

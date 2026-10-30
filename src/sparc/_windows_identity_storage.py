@@ -84,18 +84,6 @@ def _apis():
         ctypes.POINTER(wintypes.DWORD),
     ]
     advapi.GetTokenInformation.restype = wintypes.BOOL
-    advapi.GetNamedSecurityInfoW.argtypes = [
-        wintypes.LPWSTR, ctypes.c_int, wintypes.DWORD,
-        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p),
-    ]
-    advapi.GetNamedSecurityInfoW.restype = wintypes.DWORD
-    advapi.SetNamedSecurityInfoW.argtypes = [
-        wintypes.LPWSTR, ctypes.c_int, wintypes.DWORD, ctypes.c_void_p,
-        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
-    ]
-    advapi.SetNamedSecurityInfoW.restype = wintypes.DWORD
     advapi.GetSecurityInfo.argtypes = [
         wintypes.HANDLE, ctypes.c_int, wintypes.DWORD,
         ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
@@ -303,21 +291,6 @@ def _validate_components(path: Path) -> Path:
     return absolute
 
 
-def _security(path: Path, information: int):
-    advapi, kernel = _apis()
-    owner = ctypes.c_void_p()
-    group = ctypes.c_void_p()
-    dacl = ctypes.c_void_p()
-    descriptor = ctypes.c_void_p()
-    result = advapi.GetNamedSecurityInfoW(
-        str(path), 1, information, ctypes.byref(owner), ctypes.byref(group),
-        ctypes.byref(dacl), None, ctypes.byref(descriptor),
-    )
-    if result:
-        raise OSError(result, "GetNamedSecurityInfoW failed")
-    return advapi, kernel, owner, dacl, descriptor
-
-
 def _security_handle(handle, information: int):
     advapi, kernel = _apis()
     owner = ctypes.c_void_p()
@@ -331,15 +304,6 @@ def _security_handle(handle, information: int):
     if result:
         raise OSError(result, "GetSecurityInfo failed")
     return advapi, kernel, owner, dacl, descriptor
-
-
-def _check_owner(path: Path) -> None:
-    advapi, kernel, owner, _dacl, descriptor = _security(path, _OWNER_SECURITY_INFORMATION)
-    try:
-        if not owner.value or _sid_to_text(owner) != _user_sid():
-            raise _fail("Identity directory or file is not owned by the current user")
-    finally:
-        kernel.LocalFree(descriptor)
 
 
 def _check_owner_handle(handle) -> None:

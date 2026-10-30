@@ -1,7 +1,6 @@
 """Deterministic CSV exports for synthetic analysis results."""
 
 import csv
-from dataclasses import asdict
 from datetime import datetime, timezone
 import io
 import json

@@ -445,7 +445,7 @@ class AnalysisTab:
 
     def _resize_wrapped_text(self, event) -> None:
         width = max(240, event.width - 32)
-        for child in _children(self._content):
+        for child in self._content.winfo_children():
             if isinstance(child, ttk.Label) and child.cget("wraplength"):
                 child.configure(wraplength=width)
 
@@ -1144,11 +1144,6 @@ class AnalysisTab:
             self._hash_cancel.set()
         self._job.close()
         self._plots.close()
-
-
-def _children(widget):
-    for child in widget.winfo_children():
-        yield child
 
 
 def _walk(widget):

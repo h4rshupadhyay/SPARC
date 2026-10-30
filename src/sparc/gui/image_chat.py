@@ -4,7 +4,6 @@ import hashlib
 from pathlib import Path
 import queue
 import threading
-import tkinter as tk
 from tkinter import filedialog, ttk
 
 from ..images import inspect_image, make_thumbnail
@@ -15,7 +14,7 @@ _TERMINAL={'verified','rejected','canceled','failed','unconfirmed'}
 
 
 class ImageChat:
-    def __init__(self,chat,compose,actions=None):
+    def __init__(self,chat,compose,actions):
         self.chat=chat
         self._closed=False
         self._attachment=None
@@ -27,19 +26,19 @@ class ImageChat:
         self._results=queue.Queue(16)
         self._stop=threading.Event()
         self._job=JobController(chat.widget,self._job_result)
-        self._attach_button=ttk.Button(actions if actions is not None else compose,text='Attach image',command=self.attach)
-        self._attach_button.grid(row=0 if actions is not None else 1,column=0,sticky='w')
+        self._attach_button=ttk.Button(actions,text='Attach image',command=self.attach)
+        self._attach_button.grid(row=0,column=0,sticky='w')
         self._attachment_frame=ttk.Frame(compose,padding=(0,6,0,0))
         self._attachment_frame.columnconfigure(1,weight=1)
         self._attachment_label=ttk.Label(self._attachment_frame)
         self._attachment_label.grid(row=0,column=0,rowspan=2,sticky='nw',padx=(0,8))
         self._attachment_details=ttk.Label(self._attachment_frame,wraplength=500)
         self._attachment_details.grid(row=0,column=1,sticky='nw')
-        actions=ttk.Frame(self._attachment_frame)
-        actions.grid(row=1,column=1,sticky='w',pady=(4,0))
-        self._send_image=ttk.Button(actions,text='Send image',command=self.send)
+        attachment_actions=ttk.Frame(self._attachment_frame)
+        attachment_actions.grid(row=1,column=1,sticky='w',pady=(4,0))
+        self._send_image=ttk.Button(attachment_actions,text='Send image',command=self.send)
         self._send_image.grid(row=0,column=0,padx=(0,6))
-        ttk.Button(actions,text='Remove attachment',command=self.remove).grid(row=0,column=1)
+        ttk.Button(attachment_actions,text='Remove attachment',command=self.remove).grid(row=0,column=1)
         self._worker=threading.Thread(target=self._thumbnail_worker,name='sparc-preview',daemon=True)
         self._worker.start()
         self._after=chat.widget.after(50,self._poll)

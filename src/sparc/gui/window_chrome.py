@@ -25,20 +25,24 @@ class WindowChrome:
         self._fallback = False
         self._restore_after = None
         self._disposed = False
-        self._decorated = False
         self._system = window.tk.call('tk', 'windowingsystem')
-        fonts = colors.install(window)
-        style = ttk.Style(window)
-        style.configure('Chrome.TFrame', background=colors.SOFT)
-        style.configure('Chrome.TLabel', background=colors.SOFT, foreground=colors.MUTED,
-                        font=fonts.small)
-        style.configure('Chrome.TButton', background=colors.SOFT, borderwidth=0,
-                        padding=(0, 0), font=fonts.navigation, focuscolor=colors.ACCENT)
-        style.map('Chrome.TButton', background=[('active', colors.RAISED), ('!active', colors.SOFT)])
-        style.map('Close.Chrome.TButton', background=[('active', '#a83245'), ('!active', colors.SOFT)])
+        colors.install(window)
+        self._build_header()
+        self._bind_dragging()
         if notebook is not None:
-            style.configure('Chrome.TNotebook', tabmargins=(88, 4, 132, 0))
-            notebook.configure(style='Chrome.TNotebook')
+            self._build_resize_handles()
+        self._bind(window, '<Map>', self._on_map)
+        self._bind(window, '<Destroy>', self._on_destroy)
+        self._bind(window, '<Alt-F4>', lambda event: self.request_close())
+        self._configure_decorations(mapped)
+        if show_when_ready:
+            window.deiconify()
+
+    def _build_header(self):
+        window = self.window
+        if self.notebook is not None:
+            ttk.Style(window).configure('Chrome.TNotebook', tabmargins=(88, 4, 132, 0))
+            self.notebook.configure(style='Chrome.TNotebook')
             self.header = window
         else:
             self.header = ttk.Frame(window, style='Chrome.TFrame', height=44)
@@ -48,54 +52,51 @@ class WindowChrome:
         self.brand.place(x=14, y=4, width=72, height=36)
         self.controls = ttk.Frame(self.header, style='Chrome.TFrame')
         self.minimize_button = self.maximize_button = None
-        if notebook is not None:
+        if self.notebook is not None:
             self.controls.place(relx=1, x=-126, y=4, width=120, height=36)
             self.minimize_button = self._button('−', self.minimize, 0)
             self.maximize_button = self._button('□', self.toggle_maximize, 1)
         else:
             self.controls.place(relx=1, x=-46, y=4, width=40, height=36)
         self.close_button = self._button('×', self.request_close,
-                                         2 if notebook is not None else 0, close=True)
-        for target in (self.brand, self.header if notebook is None else notebook):
+                                         2 if self.notebook is not None else 0, close=True)
+
+    def _bind_dragging(self):
+        surface = self.notebook if self.notebook is not None else self.header
+        for target in (self.brand, surface):
             self._bind(target, '<ButtonPress-1>', self._start_drag)
             self._bind(target, '<B1-Motion>', self._drag)
             self._bind(target, '<ButtonRelease-1>', self._end_gesture)
             self._bind(target, '<Double-Button-1>', self._double_click)
-        self.grips = []
-        if notebook is not None:
-            for edge, options, cursor in (
-                ('n', dict(relwidth=1, height=4), 'top_side'),
-                ('s', dict(rely=1, y=-4, relwidth=1, height=4), 'bottom_side'),
-                ('w', dict(relheight=1, width=4), 'left_side'),
-                ('e', dict(relx=1, x=-4, relheight=1, width=4), 'right_side'),
-                ('nw', dict(width=9, height=9), 'top_left_corner'),
-                ('ne', dict(relx=1, x=-9, width=9, height=9), 'top_right_corner'),
-                ('sw', dict(rely=1, y=-9, width=9, height=9), 'bottom_left_corner'),
-                ('se', dict(relx=1, rely=1, x=-9, y=-9, width=9, height=9), 'bottom_right_corner'),
-            ):
-                grip = tk.Frame(window, background=colors.SOFT, cursor=cursor,
-                                borderwidth=0, highlightthickness=0)
-                grip.place(**options)
-                self._bind(grip, '<ButtonPress-1>', lambda event, edge=edge: self._start_resize(event, edge))
-                self._bind(grip, '<B1-Motion>', self._resize)
-                self._bind(grip, '<ButtonRelease-1>', self._end_gesture)
-                self.grips.append(grip)
-        self._bind(window, '<Map>', self._on_map)
-        self._bind(window, '<Destroy>', self._on_destroy)
-        self._bind(window, '<Alt-F4>', lambda event: self.request_close())
+
+    def _build_resize_handles(self):
+        for edge, options, cursor in (
+            ('n', dict(relwidth=1, height=4), 'top_side'),
+            ('s', dict(rely=1, y=-4, relwidth=1, height=4), 'bottom_side'),
+            ('w', dict(relheight=1, width=4), 'left_side'),
+            ('e', dict(relx=1, x=-4, relheight=1, width=4), 'right_side'),
+            ('nw', dict(width=9, height=9), 'top_left_corner'),
+            ('ne', dict(relx=1, x=-9, width=9, height=9), 'top_right_corner'),
+            ('sw', dict(rely=1, y=-9, width=9, height=9), 'bottom_left_corner'),
+            ('se', dict(relx=1, rely=1, x=-9, y=-9, width=9, height=9), 'bottom_right_corner'),
+        ):
+            grip = tk.Frame(self.window, background=colors.SOFT, cursor=cursor,
+                            borderwidth=0, highlightthickness=0)
+            grip.place(**options)
+            self._bind(grip, '<ButtonPress-1>', lambda event, edge=edge: self._start_resize(event, edge))
+            self._bind(grip, '<B1-Motion>', self._resize)
+            self._bind(grip, '<ButtonRelease-1>', self._end_gesture)
+
+    def _configure_decorations(self, mapped):
         # Set hints before the first managed map. Besides avoiding a flash,
         # this prevents some WMs from retaining the old title-bar extents.
-        if self._system == 'aqua':
-            self._decorated = hide_decorations(window)
-        elif not mapped:
+        if self._system != 'aqua' and not mapped:
             # Hidden Tk windows still need an idle geometry pass to create
             # and flush their native wrapper before X11/Win32 can address it.
-            window.update_idletasks()
-            self._decorated = hide_decorations(window)
-        if not self._decorated:
-            self._on_map(None)
-        if show_when_ready:
-            window.deiconify()
+            self.window.update_idletasks()
+        self._fallback = not hide_decorations(self.window)
+        if self._fallback:
+            self.window.overrideredirect(True)
 
     def _bind(self, widget, sequence, callback):
         self._bindings.append((widget, sequence, widget.bind(sequence, callback, add='+')))
@@ -107,16 +108,10 @@ class WindowChrome:
         return button
 
     def _on_map(self, event):
-        if event is not None and event.widget is not self.window:
+        if event.widget is not self.window or not self._fallback:
             return
-        if self._fallback:
-            if self._restore_after is None:
-                self._restore_after = self.window.after_idle(self._restore_override)
-        elif not self._decorated:
-            self._decorated = hide_decorations(self.window)
-            if not self._decorated:
-                self._fallback = True
-                self.window.overrideredirect(True)
+        if not self.window.overrideredirect() and self._restore_after is None:
+            self._restore_after = self.window.after_idle(self._restore_override)
 
     def _restore_override(self):
         self._restore_after = None

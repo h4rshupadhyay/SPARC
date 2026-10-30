@@ -118,6 +118,12 @@ def install(widget) -> Appearance:
     style.map('TNotebook.Tab', background=[('selected', SURFACE)], foreground=[('selected', ACCENT)],
               lightcolor=[('selected', SURFACE), ('!selected', SOFT)],
               padding=[('selected', (10, 10)), ('!selected', (10, 10))])
+    style.configure('Chrome.TFrame', background=SOFT)
+    style.configure('Chrome.TLabel', background=SOFT, foreground=MUTED, font=appearance.small)
+    style.configure('Chrome.TButton', background=SOFT, borderwidth=0, padding=(0, 0),
+                    font=appearance.navigation, focuscolor=ACCENT)
+    style.map('Chrome.TButton', background=[('active', RAISED), ('!active', SOFT)])
+    style.map('Close.Chrome.TButton', background=[('active', '#a83245'), ('!active', SOFT)])
     style.configure('TPanedwindow', background=BORDER)
     style.configure('Treeview', font=appearance.body, rowheight=appearance.body.metrics('linespace') + 10,
                     fieldbackground=SURFACE, background=SURFACE)

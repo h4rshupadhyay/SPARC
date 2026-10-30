@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack, suppress
 import queue
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -18,6 +19,22 @@ from .identity_unlock import unlock_identity_for_gui
 
 _POLL_MS = 100
 _BATCH_SIZE = 64
+
+
+def _close_failed_launch(root, service, app) -> None:
+    """Release partial startup ownership without masking the original error."""
+    if app is not None:
+        try:
+            app.close()
+            return
+        except Exception:
+            pass
+    if service is not None:
+        with suppress(Exception):
+            service.close()
+    if root is not None:
+        with suppress(Exception):
+            root.destroy()
 
 
 def launch(data_dir: Path) -> None:
@@ -57,31 +74,7 @@ def launch(data_dir: Path) -> None:
             root.deiconify()
         root.mainloop()
     except BaseException:
-        if app is not None:
-            try:
-                app.close()
-            except Exception:
-                if service is not None:
-                    try:
-                        service.close()
-                    except Exception:
-                        pass
-                if root is not None:
-                    try:
-                        root.destroy()
-                    except Exception:
-                        pass
-        else:
-            if service is not None:
-                try:
-                    service.close()
-                except Exception:
-                    pass
-            if root is not None:
-                try:
-                    root.destroy()
-                except Exception:
-                    pass
+        _close_failed_launch(root, service, app)
         raise
     else:
         if app is not None:
@@ -95,9 +88,6 @@ class SparcApp:
         self.root = root
         self.service = service
         self.notebook = ttk.Notebook(root)
-        if isinstance(self.notebook, ttk.Notebook):
-            from .appearance import install
-            install(self.notebook)
         self.notebook.pack(fill="both", expand=True)
         self._tabs = []
         self._closed = False
@@ -146,15 +136,16 @@ class SparcApp:
             return
         self._closed = True
         if self._after_id is not None:
-            try:
+            with suppress(Exception):
                 self.root.after_cancel(self._after_id)
-            except Exception:
-                pass
             self._after_id = None
-        for tab in tuple(self._tabs):
-            close = getattr(tab, "close", None)
-            if close is not None:
-                close()
-        self._tabs.clear()
-        self.service.close()
-        self.root.destroy()
+        # ExitStack unwinds every owner even if an earlier close raises.
+        # Register in reverse so tabs close in display order before the service.
+        with ExitStack() as cleanup:
+            cleanup.callback(self.root.destroy)
+            cleanup.callback(self.service.close)
+            for tab in reversed(self._tabs):
+                close = getattr(tab, "close", None)
+                if close is not None:
+                    cleanup.callback(close)
+            self._tabs.clear()
