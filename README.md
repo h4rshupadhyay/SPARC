@@ -22,9 +22,11 @@ local identities, signed audit records, and reproducible analysis tools.
   experiments, operation metrics, performance/sensitivity graphs, CSV exports,
   and standalone SVG graph exports.
 
-Traffic Analysis is in progress. Capture normalization, traffic indexing, and
-the traffic CLI/GUI are not yet completed features. See the
-[implementation ledger](docs/implementation-status.md) for task-level status.
+- **Traffic Analysis:** offline saved-capture summaries, transactional SQLite
+  indexes, validated unfiltered PDML XML, conversion measurements, and a CLI
+  with JSON reports. Optional TShark/PyShark dependencies are checked when an
+  offline action starts. Linux synthetic-fixture agreement is verified;
+  physical secure/baseline captures and native macOS validation remain pending.
 
 ## Install and run
 
@@ -183,10 +185,29 @@ the model expectations are forced pass/fail outcomes or proof of security.
 
 ## Demonstrations and evidence
 
+Analyze a saved PCAP/PCAPNG without opening the GUI:
+
+```sh
+python -m sparc.traffic analyze capture.pcapng --report report.json --sqlite index.sqlite --xml details.xml --tshark /path/to/tshark
+```
+
+In the fifth **Traffic Analysis** tab, use **Open Capture**, optionally choose
+the TShark executable, then **Analyze**, **Export SQLite**, or **Export XML**.
+The optional display filter applies to the index and summary; XML always
+describes the full unfiltered source. Captured frame bytes/s is separate from
+application plaintext goodput; conversion packets/s measures processing speed.
+Source/output aliases and duplicate CLI output paths are rejected. Failed or
+canceled jobs preserve prior outputs before publication; a later CLI failure
+lists artifacts already completed. Publication uncertainty keeps the candidate
+and reports failure. See [setup](docs/setup.md#offline-traffic-analysis) and the
+[offline workflow](docs/progress-check-demo.md#offline-capture-analysis-and-exports).
+
 - [Progress-check demo and capture procedure](docs/progress-check-demo.md)
 - [Evidence map, measurement fields, and acceptance checklist](docs/progress-check-evidence.md)
 - [Identity encryption and platform verification evidence](docs/f1-identity-at-rest-evidence.md)
 - [Image transfer and graphical analysis evidence](docs/image-transfer-and-analysis-evidence.md)
+- [Traffic index and PDML evidence](docs/t2-traffic-export-evidence.md)
+- [Traffic CLI and native interface evidence](docs/t3-traffic-interface-evidence.md)
 - [Implementation status](docs/implementation-status.md)
 
 Run the independent-process loopback demonstration from an interactive terminal:

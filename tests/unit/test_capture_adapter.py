@@ -97,9 +97,13 @@ class _FakeCapture:
 
 
 def _install_pyshark(monkeypatch, fake):
+    class FileCapture:
+        def __new__(cls, **options):
+            return fake(**options)
+
     package = types.ModuleType("pyshark")
     package.__path__ = []
-    package.FileCapture = fake
+    package.FileCapture = FileCapture
     capture_package = types.ModuleType("pyshark.capture")
     capture_package.__path__ = []
     capture_package.FileCapture = fake
@@ -112,6 +116,33 @@ def _install_pyshark(monkeypatch, fake):
     monkeypatch.setitem(sys.modules, "pyshark", package)
     monkeypatch.setitem(sys.modules, "pyshark.capture", capture_package)
     monkeypatch.setitem(sys.modules, "pyshark.capture.capture", capture_module)
+
+
+def test_failed_decoder_never_retries_cleanup_from_finalizer_after_loop_close(monkeypatch):
+    finalizers = []
+    loops = []
+
+    class FailedCapture:
+        def __init__(self, **options):
+            self.eventloop = options["eventloop"]
+            loops.append(self.eventloop)
+
+        async def packets_from_tshark(self, callback, **options):
+            raise RuntimeError("malformed source")
+
+        async def close_async(self):
+            raise RuntimeError("decoder cleanup uncertainty")
+
+        def __del__(self):
+            finalizers.append(self.eventloop.is_closed())
+
+    _install_pyshark(monkeypatch, lambda **options: FailedCapture(**options))
+    monkeypatch.setattr(sys.modules["pyshark"], "FileCapture", FailedCapture)
+    _domain_error(lambda: list(_adapter()(Path("source"), Path("tool"), threading.Event())),
+                  "capture_cleanup_failed")
+    gc.collect()
+    assert loops and loops[0].is_closed()
+    assert finalizers == []
 
 
 def _adapter():

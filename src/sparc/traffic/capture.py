@@ -362,11 +362,19 @@ def iter_capture(
                     failure = _capture_error()
                     status = "error"
                 else:
+                    class OwnedFileCapture(FileCapture):
+                        def __del__(self):
+                            # This supervisor alone owns close_async. PyShark's
+                            # finalizer otherwise retries failed cleanup against
+                            # our already closed loop, potentially on another
+                            # thread. Failure stays explicit in outcome below.
+                            pass
+
                     if stopped():
                         status = "stopped"
                     else:
                         try:
-                            loop.run_until_complete(construct_and_supervise(FileCapture))
+                            loop.run_until_complete(construct_and_supervise(OwnedFileCapture))
                         except asyncio.CancelledError:
                             if stopped():
                                 status = "stopped"

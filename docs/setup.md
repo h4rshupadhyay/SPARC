@@ -1,6 +1,11 @@
 # SPARC setup
 
-SPARC's current desktop app provides Connection, Chat, and Audit tabs for text-only peer communication. It connects directly to a manually entered IPv4 address and TCP port on the same LAN. The analysis tab and file transfer are not part of this setup.
+SPARC provides Connection, Chat, Audit, Analysis, and Traffic Analysis tabs.
+Chat supports text and approved image attachments over authenticated IPv4/TCP.
+Analysis supplies synthetic experiments and performance measurements; Traffic
+Analysis processes externally saved captures. Current required demo platforms
+are Linux and macOS; Windows compatibility was withdrawn on 2026-10-09 and
+the historical Windows recipe below is unverified.
 
 ## Linux
 
@@ -71,3 +76,27 @@ If PowerShell blocks virtual-environment activation, use `.\.venv\Scripts\python
 For two instances on one computer, use different data directories and different listening ports. On Windows, a second example directory is `$env:LOCALAPPDATA\SPARC\device-b`; on Linux, use `$HOME/.local/share/sparc/device-b`.
 
 `python -m sparc --check` prints local package versions and the public identity fingerprint without opening the GUI. Tk is required only for normal desktop launch. PyShark, TShark, and the optional analysis dependencies are not needed for the current Connection, Chat, and Audit tabs.
+
+## Offline traffic analysis
+
+Install the optional Python adapter in the environment used to launch SPARC:
+
+```sh
+python -m pip install -e '.[traffic]'
+```
+
+PyShark invokes a separate TShark executable. On Debian/Ubuntu, install it with
+`sudo apt install tshark`. For macOS, install Wireshark and choose its bundled
+`/Applications/Wireshark.app/Contents/MacOS/tshark`, or use a standalone TShark
+already installed on the machine. Verify the actual executable with
+`tshark --version` (or its quoted full path). Use **Choose TShark** in the
+Traffic Analysis tab or `--tshark /path/to/tshark` on the offline CLI if it is
+not on PATH. Paths containing spaces must be quoted in terminal commands.
+Missing tools affect the offline action; ordinary chat and `--check` remain
+available. Native macOS tool and capture checks have not been performed.
+
+Save PCAP/PCAPNG externally in Wireshark. SPARC does not request live capture
+privileges, change capture permissions, or modify the source capture. Use
+separate filenames for the source, JSON report, SQLite index and PDML export.
+See the [offline workflow](progress-check-demo.md#offline-capture-analysis-and-exports)
+for filtering, source hashes, integrity checks and measurement definitions.

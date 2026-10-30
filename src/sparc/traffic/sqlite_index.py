@@ -267,8 +267,8 @@ def _write_index(
         temporary_path = Path(temporary_name)
         if os.name == "posix":
             os.fchmod(temporary_fd, 0o600)
-        os.close(temporary_fd)
-        temporary_fd = None
+        closing_fd, temporary_fd = temporary_fd, None
+        os.close(closing_fd)
 
         _check_cancel(cancel)
         connection = sqlite3.connect(str(temporary_path))
@@ -338,8 +338,8 @@ def _write_index(
         file_fd = os.open(temporary_path, os.O_RDONLY)
         _check_cancel(cancel)
         os.fsync(file_fd)
-        os.close(file_fd)
-        file_fd = None
+        closing_fd, file_fd = file_fd, None
+        os.close(closing_fd)
 
         directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
         directory_fd = os.open(parent, directory_flags)
@@ -348,8 +348,8 @@ def _write_index(
         replaced = True
         temporary_path = None
         os.fsync(directory_fd)
-        os.close(directory_fd)
-        directory_fd = None
+        closing_fd, directory_fd = directory_fd, None
+        os.close(closing_fd)
         published_count = total_inserted
     except Exception as error:
         primary_error = error
@@ -512,8 +512,8 @@ def _replace_and_sync(stage: Path, destination: Path, cancel: Event) -> int:
         os.replace(stage, destination)
         replaced = True
         os.fsync(directory_fd)
-        os.close(directory_fd)
-        directory_fd = None
+        closing_fd, directory_fd = directory_fd, None
+        os.close(closing_fd)
         return destination.stat().st_size
     except Exception as error:
         if replaced:
@@ -594,14 +594,25 @@ def import_sqlite(
         },
     }
 
+    stage_fd = None
+    stage = None
     try:
         stage_fd, stage_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp",
                                                 dir=str(destination.parent))
+        stage = Path(stage_name)
         if os.name == "posix":
             os.fchmod(stage_fd, 0o600)
-        os.close(stage_fd)
-        stage = Path(stage_name)
+        closing_fd, stage_fd = stage_fd, None
+        os.close(closing_fd)
     except OSError as error:
+        try:
+            if stage_fd is not None:
+                closing_fd, stage_fd = stage_fd, None
+                os.close(closing_fd)
+            if stage is not None:
+                stage.unlink(missing_ok=True)
+        except OSError as cleanup_error:
+            raise SparcError("capture_cleanup_failed", "Temporary traffic index cleanup could not be confirmed") from cleanup_error
         raise SparcError("traffic_index_failed", _INDEX_ERROR) from error
 
     published = False

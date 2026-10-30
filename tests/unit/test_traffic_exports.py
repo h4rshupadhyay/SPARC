@@ -352,3 +352,31 @@ def test_output_close_uncertainty_is_a_cleanup_failure(tmp_path, monkeypatch):
     _error(lambda: module.export_xml(source, destination, Path("ignored"), threading.Event()),
            "capture_cleanup_failed")
     assert destination.read_bytes() == b"prior"
+
+
+def test_directory_close_error_does_not_retry_a_released_descriptor(tmp_path, monkeypatch):
+    import stat
+    module = _pdml_module()
+    source, destination = tmp_path / "in.pcap", tmp_path / "out.xml"
+    source.write_bytes(b"capture")
+    _configure(monkeypatch, module)
+    original = os.close
+    closed_directory = []
+    calls = []
+
+    def close(fd):
+        if fd in closed_directory:
+            calls.append(fd)
+            raise OSError("descriptor may already belong to another worker")
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            calls.append(fd)
+            closed_directory.append(fd)
+            original(fd)
+            raise OSError("close completion uncertain")
+        return original(fd)
+
+    monkeypatch.setattr(os, "close", close)
+    _error(lambda: module.export_xml(source, destination, Path("ignored"), threading.Event()),
+           "traffic_publication_uncertain")
+    assert len(calls) == 1
+    assert destination.read_bytes() == b"<pdml/>"

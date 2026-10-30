@@ -38,6 +38,12 @@ Display at most top 100 directional pairs/conversations and record truncation; c
 
 Per the approved [master execution order](2026-10-08-sparc-progress-check-plan.md#execution-order-and-independently-testable-plans), A3 and F1 milestone validation must complete before starting T1. This is an execution-order gate and adds no artificial API dependency between traffic analysis and identity storage. Use the [master plan's authoritative ownership, small-task cycle, dispatch, history and environment rules](2026-10-08-sparc-progress-check-plan.md#model-ownership-and-small-task-workflow). Reuse a task-local Luna worker for related units and red/green phases; the controller verifies each phase separately and runs the milestone gate below. Unit interfaces, allowed files, assertions and exclusions remain binding. Documentation changes use content/link checklists without documentation-mirroring tests. Commands use the master virtual environment; GUI checks require a display and unavailable checks stay explicit.
 
+Continuation on 2026-10-30 follows the newer user preference for solo execution.
+The historical Sol/Luna role labels below describe the original workflow;
+current implementation and final review run inline against the same contracts.
+Current evidence: [T2](../../t2-traffic-export-evidence.md) and
+[T3](../../t3-traffic-interface-evidence.md).
+
 ### T1: Lazy tool discovery and bounded capture streaming
 
 #### T1a: Normalized packet records
@@ -108,9 +114,9 @@ Per the approved [master execution order](2026-10-08-sparc-progress-check-plan.m
 
 **Interfaces:** Produce `import_sqlite(source: Path, destination: Path, tshark: Path, cancel: Event, display_filter: str | None = None) -> TrafficReport`; private `_write_index(rows: Iterator[PacketRow], destination: Path, metadata: dict, cancel: Event) -> int` supplies tested staging; final report facade completed T2d
 
-- [ ] **Fixed test oracle:** `test_sqlite_nulls_fields_indexes_and_parameters`: missing fields sql null, packet number/stream/timestamp indexes; quoted source/filter safe. `test_cancel_preserves_existing_output`: original/prior index unchanged, temporary files cleaned. `test_source_alias_is_rejected`: same path/symlink/hardlink rejected before output open. `test_streaming_batch_bound`: no packet collection, transaction batches of 500 rows
-- [ ] **Luna implementation:** metadata(key text PRIMARY KEY,value text canonical JSON) and packets columns exact PacketRow types, number integer primarykey, timestamp text, remaining ints/text nullable. Capture original SHA256 streaming chunks of 64 KiB, source file size/tool versions/filter. Same-directory temporary DB, atomic replace only after complete commit+integrity check. Set completion true only successful final index; failed job reports incomplete progress and publishes nothing. Deferred report wrapper calls T2b after it exists; task tests use private writer and public error paths until then
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_sqlite_index.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_sqlite_nulls_fields_indexes_and_parameters`: missing fields sql null, packet number/stream/timestamp indexes; quoted source/filter safe. `test_cancel_preserves_existing_output`: original/prior index unchanged, temporary files cleaned. `test_source_alias_is_rejected`: same path/symlink/hardlink rejected before output open. `test_streaming_batch_bound`: no packet collection, transaction batches of 500 rows
+- [x] **Luna implementation:** metadata(key text PRIMARY KEY,value text canonical JSON) and packets columns exact PacketRow types, number integer primarykey, timestamp text, remaining ints/text nullable. Capture original SHA256 streaming chunks of 64 KiB, source file size/tool versions/filter. Same-directory temporary DB, atomic replace only after complete commit+integrity check. Set completion true only successful final index; failed job reports incomplete progress and publishes nothing. Deferred report wrapper calls T2b after it exists; task tests use private writer and public error paths until then
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_sqlite_index.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** summary SQL, PDML or whole-capture materialization.
 
@@ -122,9 +128,9 @@ Per the approved [master execution order](2026-10-08-sparc-progress-check-plan.m
 
 **Interfaces:** Produce `summarize_database(database: Path) -> TrafficReport`; complete T2a public return report composition
 
-- [ ] **Fixed test oracle:** `test_nonpositive_interval_has_no_rate`: one packet/equal/backward timestamps rate None. `test_captured_rate_uses_all_included_bytes`:180 bytes over 2 seconds → Decimal 90. `test_group_counts_direction_bytes_bins_and_retransmissions`: exact sql counts and six bins, top 100 outputs with metadata truncated label. `test_exact_timestamp_decimal_preserved`
-- [ ] **Luna implementation:** Duration last-first included packet in capture order, all captured frame bytes numerator; Decimal exact arithmetic. SQL groups protocol counts,TCP stream conversations,directional bytes, six approved size bins: 0-63/64-127/128-511/512-1023/1024-1518/1519+. Retransmission indications count True only. Bounded presentation top 100, complete indexed data retained. Import conversion measurement includes duration/output size and rate None on nonpositive processing time
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_traffic_summary.py tests/unit/test_sqlite_index.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_nonpositive_interval_has_no_rate`: one packet/equal/backward timestamps rate None. `test_captured_rate_uses_all_included_bytes`:180 bytes over 2 seconds → Decimal 90. `test_group_counts_direction_bytes_bins_and_retransmissions`: exact sql counts and six bins, top 100 outputs with metadata truncated label. `test_exact_timestamp_decimal_preserved`
+- [x] **Luna implementation:** Duration last-first included packet in capture order, all captured frame bytes numerator; Decimal exact arithmetic. SQL groups protocol counts,TCP stream conversations,directional bytes, six approved size bins: 0-63/64-127/128-511/512-1023/1024-1518/1519+. Retransmission indications count True only. Bounded presentation top 100, complete indexed data retained. Import conversion measurement includes duration/output size and rate None on nonpositive processing time
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_traffic_summary.py tests/unit/test_sqlite_index.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** plaintext goodput, end-to-end loss or one-way latency.
 
@@ -136,9 +142,9 @@ Per the approved [master execution order](2026-10-08-sparc-progress-check-plan.m
 
 **Interfaces:** Produce `export_xml(source: Path, destination: Path, tshark: Path, cancel: Event) -> ConversionResult`
 
-- [ ] **Fixed test oracle:** `test_pdml_uses_argument_list_without_shell`: exact [tool,"-n","-r",source,"-T","pdml"], shell False. `test_cancel_or_tool_error_preserves_existing_output`: sources/prior outputs unchanged, finite cleanup. `test_xml_count_and_well_formedness_before_publish`: incremental parser correct count, invalid xml cannot publish. `test_source_alias_is_rejected`
-- [ ] **Luna implementation:** Popen stdout tempfile, stderr tempfile with last 8 KiB read for error (bounded RAM), cancel poll every 100 ms, terminate, wait up to 2 seconds, then kill. Incremental XML iterparse counts packet and clears nodes, never load all xml. Unfiltered source pdml even if a SQLite filter is selected. SHA256/size/tool versions/count/elapsed/output size in result metadata; publish after success+parse only
-- [ ] **Controller red/green:** `python -m pytest tests/unit/test_traffic_exports.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_pdml_uses_argument_list_without_shell`: exact [tool,"-n","-r",source,"-T","pdml"], shell False. `test_cancel_or_tool_error_preserves_existing_output`: sources/prior outputs unchanged, finite cleanup. `test_xml_count_and_well_formedness_before_publish`: incremental parser correct count, invalid xml cannot publish. `test_source_alias_is_rejected`
+- [x] **Luna implementation:** Popen stdout tempfile, stderr tempfile with last 8 KiB read for error (bounded RAM), cancel poll every 100 ms, terminate, wait up to 2 seconds, then kill. Incremental XML iterparse counts packet and clears nodes, never load all xml. Unfiltered source pdml even if a SQLite filter is selected. SHA256/size/tool versions/count/elapsed/output size in result metadata; publish after success+parse only
+- [x] **Controller red/green:** `python -m pytest tests/unit/test_traffic_exports.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** shell commands, decrypted SPARC content.
 
@@ -150,9 +156,9 @@ Per the approved [master execution order](2026-10-08-sparc-progress-check-plan.m
 
 **Interfaces:** Produce `analyze_capture(source: Path, tshark: Path, cancel: Event, display_filter: str | None = None) -> TrafficReport` using temporary index; public import_sqlite returns summary with conversion
 
-- [ ] **Fixed test oracle:** `test_fixture_exports_agree_with_source`: five pdml packets/five DB rows and 262 captured bytes, known fields, ARP null, PRAGMA integrity_check ok, source hash unchanged. `test_analysis_temp_index_cleanup`: success/cancel/error all cleanup. `test_filtered_index_labels_filter_and_pdml_is_unfiltered`
-- [ ] **Luna implementation:** One PyShark index pass supplies summary; analyze-only temporary DB cleaned in finally. Reuse exact source fixture independent manifest; real-tool tests marked tshark, skips unverified. Genuine pcapng repeat belongs actual evidence workflow, not fabricated fixture claim
-- [ ] **Controller red/green:** `python -m pytest tests/integration/test_capture_exports.py -m tshark -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_fixture_exports_agree_with_source`: five pdml packets/five DB rows and 262 captured bytes, known fields, ARP null, PRAGMA integrity_check ok, source hash unchanged. `test_analysis_temp_index_cleanup`: success/cancel/error all cleanup. `test_filtered_index_labels_filter_and_pdml_is_unfiltered`
+- [x] **Luna implementation:** One PyShark index pass supplies summary; analyze-only temporary DB cleaned in finally. Reuse exact source fixture independent manifest; real-tool tests marked tshark, skips unverified. Genuine pcapng repeat belongs actual evidence workflow, not fabricated fixture claim
+- [x] **Controller red/green:** `python -m pytest tests/integration/test_capture_exports.py -m tshark -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** new parsing path or packet-object retention.
 
@@ -168,9 +174,9 @@ Per the approved [master execution order](2026-10-08-sparc-progress-check-plan.m
 
 **Interfaces:** Produce `main(argv: list[str] | None = None) -> int`; CLI `python -m sparc.traffic analyze CAPTURE --report REPORT.json [--sqlite INDEX.sqlite] [--xml DETAILS.xml] [--tshark PATH] [--display-filter FILTER]`
 
-- [ ] **Fixed test oracle:** `test_missing_tool_exits_2`: actionable tshark message. `test_malformed_capture_exits_1`. `test_success_exits_0_and_report_matches_index`: count/source hash/definitions. `test_alias_or_duplicate_output_rejected_before_mutation`. `test_later_output_failure_reports_completed_artifacts_but_not_complete_bundle`
-- [ ] **Luna implementation:** One sqlite import provides index+summary or temporary index for analysis-only; distinct pdml pass only if requested. JSON decimal exact strings; output alias validation covers source and duplicate output destinations before all work. Artifacts published independently, incomplete bundle honest; existing completed artifacts reported if later export fails
-- [ ] **Controller red/green:** `python -m pytest tests/integration/test_traffic_cli.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_missing_tool_exits_2`: actionable tshark message. `test_malformed_capture_exits_1`. `test_success_exits_0_and_report_matches_index`: count/source hash/definitions. `test_alias_or_duplicate_output_rejected_before_mutation`. `test_later_output_failure_reports_completed_artifacts_but_not_complete_bundle`
+- [x] **Luna implementation:** One sqlite import provides index+summary or temporary index for analysis-only; distinct pdml pass only if requested. JSON decimal exact strings; output alias validation covers source and duplicate output destinations before all work. Artifacts published independently, incomplete bundle honest; existing completed artifacts reported if later export fails
+- [x] **Controller red/green:** `python -m pytest tests/integration/test_traffic_cli.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** live capture, whole-subsystem rewrite or model-run shell.
 
@@ -182,9 +188,9 @@ Per the approved [master execution order](2026-10-08-sparc-progress-check-plan.m
 
 **Interfaces:** Produce `TrafficTab(parent: ttk.Notebook, tshark_path: Path | None = None).close() -> None`; `register_traffic(app: SparcApp, tshark_path: Path | None = None) -> None`; consume C7 JobController
 
-- [ ] **Fixed test oracle:** `test_missing_tools_leave_chat_usable`: tab action error only, no startup PySharkimport. `test_traffic_close_ignores_late_result`: no destroyed widget. `test_cancel_terminates_and_export_error_keeps_results_for_retry`. `test_single_job_bounded_queue_and_rates_labeled`
-- [ ] **Luna implementation:** Open Capture,Analyze,Export XML,Export SQLite,explicit tool path selector and progress/cancel. JobController queue of 64 reused, one main thread table update, no overlapping jobs. Fifth-tab lazy registration must not alter secure-chat startup. Explain captured bytes/s vs plaintext goodput and conversion packets/s; retransmission observation not attack proof
-- [ ] **Controller red/green:** `python -m pytest tests/gui/test_traffic_view.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
+- [x] **Fixed test oracle:** `test_missing_tools_leave_chat_usable`: tab action error only, no startup PySharkimport. `test_traffic_close_ignores_late_result`: no destroyed widget. `test_cancel_terminates_and_export_error_keeps_results_for_retry`. `test_single_job_bounded_queue_and_rates_labeled`
+- [x] **Luna implementation:** Open Capture,Analyze,Export XML,Export SQLite,explicit tool path selector and progress/cancel. JobController queue of 64 reused, one main thread table update, no overlapping jobs. Fifth-tab lazy registration must not alter secure-chat startup. Explain captured bytes/s vs plaintext goodput and conversion packets/s; retransmission observation not attack proof
+- [x] **Controller red/green:** `python -m pytest tests/gui/test_traffic_view.py -q`. Initial missing-behavior failure, then all stated tests PASS; use the master plan's shared cycle.
 
 **Exclusions:** new threadpool or packet capture administrator privileges.
 
@@ -196,9 +202,9 @@ Per the approved [master execution order](2026-10-08-sparc-progress-check-plan.m
 
 **Interfaces:** Produce documented offline workflow external Wireshark→capture→PyShark SQLite/summary+TShark pdml, source verification and conversion efficiency checklist
 
-- [ ] **Fixed test oracle:** Controller document review: all five security goals and 13 acceptance criteria mapped; install/location tshark Linux/macOS, absent tool actionable; capture filters for secure port 47655/baseline port 47656 and Follow TCP Stream; independent fixture vs real capture labels. Runtime agreement assertion remains T2d/T3a, no tests that mirror reversible documentation
-- [ ] **Luna implementation:** Document actual command recipes, source SHA256,count/known field/XML well formed/SQLite integrity checks and conversion metrics with host versions. Controller runs CLI on fixture and, when available, genuine pcapng secure/baseline captures, visually checks fifth tab. No real tool/capture success claimed from mocks or skips; cross platform verification separate
-- [ ] **Controller documentation/regression check:** `python -m pytest tests/integration/test_traffic_cli.py tests/integration/test_capture_exports.py -q`; existing runtime assertions PASS, plus the stated content/link/acceptance checklist. No forced red failure for this documentation-only unit.
+- [x] **Fixed test oracle:** Controller document review: all five security goals and 13 acceptance criteria mapped; install/location tshark Linux/macOS, absent tool actionable; capture filters for secure port 47655/baseline port 47656 and Follow TCP Stream; independent fixture vs real capture labels. Runtime agreement assertion remains T2d/T3a, no tests that mirror reversible documentation
+- [x] **Luna implementation:** Document actual command recipes, source SHA256,count/known field/XML well formed/SQLite integrity checks and conversion metrics with host versions. Controller runs CLI on fixture and, when available, genuine pcapng secure/baseline captures, visually checks fifth tab. No real tool/capture success claimed from mocks or skips; cross platform verification separate
+- [x] **Controller documentation/regression check:** `python -m pytest tests/integration/test_traffic_cli.py tests/integration/test_capture_exports.py -q`; existing runtime assertions PASS, plus the stated content/link/acceptance checklist. No forced red failure for this documentation-only unit.
 
 **Exclusions:** invented captures/screenshots or rewriting approved scope.
 

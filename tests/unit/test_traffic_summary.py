@@ -395,4 +395,3 @@ def test_public_import_detects_source_change_before_replacing_output(tmp_path, m
     assert calls == [1]
     assert destination.read_bytes() == b"old output"
     assert list(tmp_path.glob(".out.sqlite.*")) == []
-

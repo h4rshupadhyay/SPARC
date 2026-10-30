@@ -199,8 +199,8 @@ For an external physical-device session, record each device's OS, Python and
 dependency versions, interface, endpoint, chosen port, capture file digest,
 and whether pairing was new or remembered. Keep physical-device evidence
 separate from simulation results. The Wireshark capture and packet-conversion
-deliverables remain future work; no PCAP, PDML, SQLite, or PyShark result is
-claimed here.
+deliverables for physical secure/baseline sessions remain pending. The
+synthetic-fixture conversion checks below are separate evidence.
 
 ## Standalone synthetic analysis
 
@@ -244,3 +244,95 @@ events. The separate finite resource exercise at
 listener and a bounded 50-connection invalid-handshake workload. Neither
 artifact supplies physical-device results, attack-workload goodput, measured
 detection/recovery timing, or an arbitrary-denial-of-service claim.
+
+## Offline capture analysis and exports
+
+Use external Wireshark to save the secure session (`tcp port 47655`) and the
+separate lab-only plaintext baseline (`tcp port 47656`) as different captures.
+The equivalent Wireshark display filters are `tcp.port == 47655` and
+`tcp.port == 47656`. Follow the reassembled TCP stream in both directions:
+secure chat exposes handshake/framing metadata while the baseline exposes its
+synthetic text. Neither a packet segment nor a traffic summary proves all five
+security goals. Preserve the originals and record OS, tool versions, source
+hashes, endpoints, capture interface, filters and evidence provenance.
+
+With the optional traffic dependencies installed, run:
+
+```sh
+python -m sparc.traffic analyze secure.pcapng --report secure-report.json --sqlite secure-index.sqlite --xml secure-details.xml --tshark /path/to/tshark
+python -m sparc.traffic analyze baseline.pcapng --report baseline-report.json --sqlite baseline-index.sqlite --xml baseline-details.xml --tshark /path/to/tshark
+```
+
+The fifth **Traffic Analysis** tab provides the same offline operations. Open a
+capture, choose TShark if needed, then analyze or export. One job runs at a time;
+Cancel remains in a waiting state until its worker settles. A cleanup warning
+means termination was not confirmed. Failed same-source exports retain the
+previous summary; changing the source, tool or filter invalidates that summary.
+
+`--display-filter 'tcp.port == 47655'` filters only the SQLite index/summary.
+PDML always represents the complete unfiltered source. Do not compare their
+packet totals as though their scopes were identical. JSON serializes Decimal
+intervals and captured-frame rates as exact strings. It is an unsigned analysis
+report, not an authenticated evidence manifest.
+
+Validate exported artifacts independently, for example:
+
+```sh
+python - <<'PY'
+import hashlib, json, sqlite3
+import xml.etree.ElementTree as ET
+from pathlib import Path
+source = Path('secure.pcapng')
+report = json.loads(Path('secure-report.json').read_text())
+h = hashlib.sha256()
+with source.open('rb') as handle:
+    for chunk in iter(lambda: handle.read(65536), b''):
+        h.update(chunk)
+digest = h.hexdigest()
+assert digest == report['metadata']['source_sha256']
+with sqlite3.connect('file:secure-index.sqlite?mode=ro', uri=True) as db:
+    assert db.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
+    assert db.execute('SELECT COUNT(*) FROM packets').fetchone()[0] == report['packet_count']
+    print(db.execute('SELECT number,timestamp,src,dst,src_port,dst_port FROM packets ORDER BY number LIMIT 5').fetchall())
+count = 0
+stack = []
+for event, node in ET.iterparse('secure-details.xml', events=('start', 'end')):
+    if event == 'start':
+        if not stack:
+            assert node.tag == 'pdml'
+        stack.append(node)
+    else:
+        if len(stack) == 2 and node.tag == 'packet':
+            count += 1
+        stack.pop()
+        if stack:
+            stack[-1].remove(node)
+        node.clear()
+assert count == report['bundle']['xml_conversion']['packet_count']
+print('source hash, SQLite integrity/count and PDML count agree')
+PY
+```
+
+Compare the selected known frame/IP/port fields with Wireshark, and retain the
+source capture. Captured frame bytes/s uses all included captured bytes over
+the first-to-last included packet interval; it is unavailable below two
+packets or for a nonpositive interval. It is separate from application
+plaintext goodput and conversion packets/s. Record source/output sizes,
+elapsed ns, conversion packets/s and observed host/parser versions. Persisted
+SQLite conversion timing ends at a prepublication checkpoint; the returned
+conversion includes final publication. Analysis-only reports state that their
+temporary index was removed. Retransmission indications are observations,
+not evidence of loss, one-way latency or an attack.
+
+The CLI publishes each artifact independently and JSON last. If a later step
+fails, stderr lists completed artifacts with `complete:false` for the bundle;
+those artifacts are retained. A post-replacement durability error reports the
+affected artifact as unconfirmed and retains its candidate. Use a new output
+name for a retry when reviewing an uncertain publication.
+
+To repeat the verified synthetic example, substitute
+`tests/fixtures/traffic-small.pcap` and distinct output names. Its independent
+manifest fixes five packets, 262 captured bytes, four seconds and 65.5 captured
+bytes/s. It contains constructed Ethernet/IP/TCP/UDP/ARP frames, not an actual
+SPARC secure/baseline session. Actual PCAPNG and native Mac validation remain
+pending; [T2 evidence](t2-traffic-export-evidence.md) records the Linux scope.

@@ -451,6 +451,51 @@ def test_public_import_closes_stage_descriptor_when_fsync_fails(tmp_path, monkey
     assert destination.read_bytes() == b"prior"
 
 
+def test_writer_does_not_retry_released_directory_descriptor(tmp_path, monkeypatch):
+    module = _index_module()
+    destination = tmp_path / "index.sqlite"
+    original = os.close
+    released = []
+    calls = []
+
+    def close(fd):
+        if fd in released:
+            calls.append(fd)
+            raise OSError("descriptor released")
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            calls.append(fd)
+            released.append(fd)
+            original(fd)
+            raise OSError("directory close uncertain")
+        return original(fd)
+
+    monkeypatch.setattr(os, "close", close)
+    _assert_error(lambda: _write(module, iter([_packet(1)]), destination), "traffic_publication_uncertain")
+    assert len(calls) == 1
+    with sqlite3.connect(destination) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM packets").fetchone()[0] == 1
+
+
+def test_public_stage_setup_failure_cleans_owned_file_and_descriptor(tmp_path, monkeypatch):
+    module = _index_module()
+    source, destination, tool = tmp_path / "in.pcap", tmp_path / "index.sqlite", tmp_path / "tool"
+    source.write_bytes(b"capture")
+    destination.write_bytes(b"prior")
+    tool.write_text("#!/bin/sh\nprintf 'TShark test\\n'\n")
+    tool.chmod(0o755)
+    descriptors = []
+    def fail(fd, mode):
+        descriptors.append(fd)
+        raise OSError("private permission fault")
+    monkeypatch.setattr(os, "fchmod", fail)
+    _assert_error(lambda: module.import_sqlite(source, destination, tool, threading.Event()), "traffic_index_failed")
+    assert descriptors
+    with pytest.raises(OSError):
+        os.fstat(descriptors[0])
+    assert not _staging_files(destination)
+    assert destination.read_bytes() == b"prior"
+
+
 @pytest.mark.parametrize("bad_value", [
     Decimal("1.25"),
     b"bytes",

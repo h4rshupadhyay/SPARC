@@ -48,6 +48,9 @@ def launch(data_dir: Path) -> None:
             from .analysis_view import register_analysis
 
             register_analysis(app, service)
+            from .traffic_view import register_traffic
+
+            register_traffic(app)
         root.mainloop()
     except BaseException:
         if app is not None:
