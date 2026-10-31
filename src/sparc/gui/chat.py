@@ -48,7 +48,7 @@ class ChatTab:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
         header = ttk.Frame(frame)
-        header.grid(row=0, column=0, sticky='ew', pady=(0, 10))
+        header.grid(row=0, column=0, sticky='ew', pady=(0, 6))
         header.columnconfigure(0, weight=1)
         ttk.Label(header, text='Chat', style='Title.TLabel').grid(row=0, column=0, sticky='w')
         ttk.Label(header, textvariable=self._status, style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=(4, 0))
@@ -117,7 +117,7 @@ class ChatTab:
         body.bind('<Configure>', self._schedule_layout, add='+')
 
         compose = ttk.Frame(frame)
-        compose.grid(row=2, column=0, sticky="ew", pady=(10, 0))
+        compose.grid(row=2, column=0, sticky="ew", pady=(6, 0))
         compose.columnconfigure(0, weight=1)
         ttk.Label(compose, text='Message', style='Heading.TLabel').grid(row=0, column=0, sticky='w', pady=(0, 8))
         self._input = tk.Text(compose, height=3, wrap=tk.WORD, **text_options(self._appearance))

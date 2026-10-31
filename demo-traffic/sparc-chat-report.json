@@ -1,0 +1,156 @@
+{
+  "bundle": {
+    "artifacts": [
+      {
+        "complete": true,
+        "kind": "report",
+        "path": "demo-traffic/sparc-chat-report.json"
+      }
+    ],
+    "complete": true
+  },
+  "captured_bytes": 44890,
+  "captured_bytes_s": "10686.652919072897764007041629629810169637031209339",
+  "conversion": {
+    "complete": true,
+    "elapsed_ns": 490838002,
+    "metadata": {
+      "checkpoint_elapsed_ns": 485381791,
+      "checkpoint_measurement_scope": "import_prepublication_checkpoint",
+      "complete": true,
+      "elapsed_ns": 485381791,
+      "measurement_scope": "import_through_final_publication",
+      "packet_count": 45,
+      "packets_s": 92.71052362159998,
+      "source_bytes": 46812
+    },
+    "output_bytes": 24576,
+    "packet_count": 45,
+    "packets_s": 91.67994290711012,
+    "source_bytes": 46812,
+    "versions": {
+      "pyshark": "0.6",
+      "python": "3.10.12",
+      "tshark": "TShark (Wireshark) 4.6.6."
+    }
+  },
+  "directional_bytes": [
+    {
+      "captured_bytes": 40732,
+      "dst": "172.30.50.11",
+      "dst_port": 47701,
+      "packet_count": 24,
+      "src": "172.30.50.10",
+      "src_port": 34942
+    },
+    {
+      "captured_bytes": 4158,
+      "dst": "172.30.50.10",
+      "dst_port": 34942,
+      "packet_count": 21,
+      "src": "172.30.50.11",
+      "src_port": 47701
+    }
+  ],
+  "duration_s": "4.200566851",
+  "metadata": {
+    "artifact_retained": false,
+    "capture_rate_bins": {
+      "available": true,
+      "bytes_s": [
+        "2755",
+        "900",
+        "13989",
+        "26178",
+        "1068"
+      ],
+      "captured_bytes": [
+        2755,
+        900,
+        13989,
+        26178,
+        1068
+      ],
+      "definition": "Captured bytes divided by nominal bin width; epoch-aligned bins. Width doubles when needed to retain at most 200 bins; first/final bins may be partial. This is not application plaintext goodput or the first-to-last aggregate rate.",
+      "offsets_s": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "origin_timestamp": "1793416571",
+      "reason": "",
+      "width_s": "1"
+    },
+    "complete": true,
+    "conversion": {
+      "complete": true,
+      "elapsed_ns": 485381791,
+      "measurement_scope": "import_prepublication_checkpoint",
+      "packet_count": 45,
+      "packets_s": 92.71052362159998,
+      "source_bytes": 46812
+    },
+    "definitions": {
+      "captured_bytes_s": "Included captured frame bytes divided by first-to-last included interval",
+      "directional_grouping": "ordered source/destination address and port tuple; NULL is preserved",
+      "index": "A query index, not a lossless capture replacement",
+      "protocol_ordering": "count descending, binary protocol text ascending",
+      "rate_precision": "Decimal precision 50 with ROUND_HALF_EVEN; no float conversion",
+      "retransmissions": "Dissector indications, not end-to-end loss or attack proof",
+      "tcp_endpoint_selection": "first included packet by packet number; both directions are grouped",
+      "timestamps": "Exact source epoch text",
+      "unavailable_intervals": "duration and captured bytes per second are unavailable below two packets; rate is also unavailable for nonpositive duration"
+    },
+    "display_filter": null,
+    "evidence_type": "unspecified",
+    "group_totals": {
+      "directional_bytes": 2,
+      "protocol_counts": 2,
+      "tcp_conversations": 1
+    },
+    "measurement_scope": "analysis_temporary_index",
+    "packet_count": 45,
+    "presentation_limit": 100,
+    "schema_version": 1,
+    "source_bytes": 46812,
+    "source_name": "sparc-chat.pcapng",
+    "source_sha256": "0d36cda214b158c12b79311b41e972f4b1e5c6ecc794dcae58c0059bb78a48cc",
+    "truncated": {
+      "directional_bytes": false,
+      "protocol_counts": false,
+      "tcp_conversations": false
+    },
+    "versions": {
+      "pyshark": "0.6",
+      "python": "3.10.12",
+      "tshark": "TShark (Wireshark) 4.6.6."
+    }
+  },
+  "packet_count": 45,
+  "packet_size_distribution": {
+    "0-63": 0,
+    "1024-1518": 0,
+    "128-511": 16,
+    "1519+": 6,
+    "512-1023": 0,
+    "64-127": 23
+  },
+  "protocol_counts": {
+    "DATA": 22,
+    "TCP": 23
+  },
+  "retransmission_indications": 0,
+  "tcp_conversations": [
+    {
+      "captured_bytes": 44890,
+      "dst": "172.30.50.11",
+      "dst_port": 47701,
+      "packet_count": 45,
+      "src": "172.30.50.10",
+      "src_port": 34942,
+      "tcp_stream": 0
+    }
+  ]
+}

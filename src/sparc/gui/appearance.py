@@ -60,12 +60,12 @@ def install(widget) -> Appearance:
     sans = ('Inter', 'Fira Sans', 'SF Pro Text', 'Segoe UI', 'Noto Sans')
     mono = ('Fira Mono', 'SF Mono', 'Cascadia Mono', 'Noto Sans Mono')
     appearance = Appearance(
-        _font(root, 'TkDefaultFont', 26, candidates=sans),
-        _font(root, 'TkDefaultFont', 31, bold=True, candidates=sans),
-        _font(root, 'TkDefaultFont', 38, bold=True, candidates=sans),
-        _font(root, 'TkDefaultFont', 22, candidates=sans),
-        _font(root, 'TkFixedFont', 24, candidates=mono),
+        _font(root, 'TkDefaultFont', 30, candidates=sans),
+        _font(root, 'TkDefaultFont', 36, bold=True, candidates=sans),
+        _font(root, 'TkDefaultFont', 44, bold=True, candidates=sans),
         _font(root, 'TkDefaultFont', 24, candidates=sans),
+        _font(root, 'TkFixedFont', 28, candidates=mono),
+        _font(root, 'TkDefaultFont', 27, candidates=sans),
     )
     root._sparc_appearance = appearance
     style = ttk.Style(root)
@@ -80,7 +80,7 @@ def install(widget) -> Appearance:
     style.configure('Title.TLabel', font=appearance.title)
     style.configure('Muted.TLabel', font=appearance.small, foreground=MUTED)
     style.configure('Error.TLabel', foreground=ERROR)
-    style.configure('TButton', padding=(12, 8), background=RAISED, bordercolor=BORDER,
+    style.configure('TButton', padding=(12, 6), background=RAISED, bordercolor=BORDER,
                     lightcolor=RAISED, darkcolor=RAISED, relief='flat',
                     focusthickness=2, focuscolor=ACCENT)
     style.map('TButton', background=[('disabled', RAISED), ('pressed', SOFT), ('active', '#303e51')],
@@ -90,7 +90,7 @@ def install(widget) -> Appearance:
               foreground=[('disabled', MUTED), ('!disabled', ON_PRIMARY)])
     for kind in ('TEntry', 'TSpinbox', 'TCombobox'):
         style.configure(kind, foreground=TEXT, fieldbackground=FIELD, background=RAISED,
-                        insertcolor=TEXT, padding=7, bordercolor=BORDER,
+                        insertcolor=TEXT, padding=5, bordercolor=BORDER,
                         lightcolor=BORDER, darkcolor=BORDER, arrowcolor=MUTED, arrowsize=16)
         style.map(kind, fieldbackground=[('disabled', RAISED), ('readonly', FIELD)],
                   background=[('disabled', RAISED), ('readonly', FIELD)],
@@ -113,11 +113,11 @@ def install(widget) -> Appearance:
     style.configure('TLabelframe.Label', font=appearance.heading, foreground=TEXT, background=SURFACE)
     style.configure('TNotebook', background=SOFT, borderwidth=0, tabmargins=(12, 4, 12, 0),
                     bordercolor=BORDER, lightcolor=SURFACE, darkcolor=SURFACE)
-    style.configure('TNotebook.Tab', font=appearance.navigation, padding=(10, 10), background=SOFT,
+    style.configure('TNotebook.Tab', font=appearance.navigation, padding=(8, 10), background=SOFT,
                     foreground=MUTED, bordercolor=SOFT, lightcolor=SOFT, darkcolor=SOFT)
     style.map('TNotebook.Tab', background=[('selected', SURFACE)], foreground=[('selected', ACCENT)],
               lightcolor=[('selected', SURFACE), ('!selected', SOFT)],
-              padding=[('selected', (10, 10)), ('!selected', (10, 10))])
+              padding=[('selected', (8, 10)), ('!selected', (8, 10))])
     style.configure('Chrome.TFrame', background=SOFT)
     style.configure('Chrome.TLabel', background=SOFT, foreground=MUTED, font=appearance.small)
     style.configure('Chrome.TButton', background=SOFT, borderwidth=0, padding=(0, 0),
@@ -125,7 +125,7 @@ def install(widget) -> Appearance:
     style.map('Chrome.TButton', background=[('active', RAISED), ('!active', SOFT)])
     style.map('Close.Chrome.TButton', background=[('active', '#a83245'), ('!active', SOFT)])
     style.configure('TPanedwindow', background=BORDER)
-    style.configure('Treeview', font=appearance.body, rowheight=appearance.body.metrics('linespace') + 10,
+    style.configure('Treeview', font=appearance.body, rowheight=appearance.body.metrics('linespace') + 8,
                     fieldbackground=SURFACE, background=SURFACE)
     style.configure('Treeview.Heading', font=appearance.body, padding=(8, 6), background=SOFT,
                     bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER)

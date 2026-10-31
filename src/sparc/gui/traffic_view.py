@@ -40,7 +40,7 @@ class TrafficTab:
 
     def __init__(self, parent: ttk.Notebook, tshark_path: Path | None = None) -> None:
         self._appearance = install(parent)
-        self.widget = ttk.Frame(parent, padding=16)
+        self.widget = ttk.Frame(parent, padding=(12, 8))
         self._root = parent.winfo_toplevel()
         self._closed = False
         self._busy = False
@@ -66,7 +66,7 @@ class TrafficTab:
     def _build(self) -> None:
         frame = self.widget
         style=ttk.Style(frame)
-        style.configure('TrafficPath.TButton',padding=(12,4))
+        style.configure('TrafficPath.TButton',padding=(12,3))
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(6, weight=1)
         ttk.Label(frame, text="Offline traffic", style="Title.TLabel").grid(row=0, column=0, sticky="w")
@@ -85,7 +85,7 @@ class TrafficTab:
         ttk.Entry(paths, textvariable=self._tool_text, state="readonly", width=1,
                   font=self._appearance.small).grid(row=1, column=1, sticky="ew", pady=(6, 0))
         filters = ttk.Frame(frame)
-        filters.grid(row=3, column=0, sticky="ew", pady=6)
+        filters.grid(row=3, column=0, sticky="ew", pady=2)
         filters.columnconfigure(1, weight=1)
         ttk.Label(filters, text="Index display filter (optional)").grid(row=0, column=0, padx=(0, 10))
         self._filter_entry = ttk.Entry(filters, textvariable=self._filter)

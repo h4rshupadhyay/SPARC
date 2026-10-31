@@ -19,11 +19,16 @@ From the repository root:
 ./scripts/docker_peers.sh up
 ```
 
-The first start builds a Python/Tk image with the chat and local analysis
-dependencies. Both SPARC windows then open on your desktop. Create an encrypted
+The first start builds a Python/Tk image with chat, local analysis, and offline
+traffic dependencies (TShark and PyShark). Both SPARC windows then open on your desktop. Create an encrypted
 identity in each window using a passphrase of at least 15 characters, or unlock
 the existing identity on subsequent starts. Passphrases are entered in SPARC;
 the launcher does not collect or store them.
+
+The image uses the `src/` directory in the checkout containing this launcher.
+After updating or merging app changes, rerun `up` to rebuild and recreate both
+containers with that code. Changes in a separate Git worktree are not included
+until integrated into this checkout.
 
 Both windows have the normal SPARC title. After unlocking, use **Connection →
 Refresh IPs** to identify which has `.10` (Alice) and which has `.11` (Bob).
@@ -38,6 +43,44 @@ Only one side needs to initiate a connection. To exercise the reverse direction,
 disconnect, start Alice's listener, and connect Bob to `172.30.50.10:47655`.
 Each container can listen on `47655` because each has its own network stack.
 Neither peer's port is published to your Wi-Fi/LAN.
+
+## Demo images
+
+The repository's `demo-images/` folder contains three NASA JPEGs: Earth, the
+Moon, and a larger Mars collage. Credits and source links are in
+[`demo-images/README.md`](../demo-images/README.md).
+
+Copy them to both running peers without restarting either app:
+
+```sh
+docker compose cp demo-images/. alice:/data/demo-images
+docker compose cp demo-images/. bob:/data/demo-images
+```
+
+After connecting the peers, open **Chat → Attach image** in either window.
+Enter `/data/demo-images/` in the file chooser's directory field, select an
+image, and click **Send image**. Accept the transfer on the other peer when
+prompted. Start with `earth-blue-marble.jpg`; use `mars-collage.jpg` to observe
+more image-transfer packets in Wireshark. These files remain in the peer data
+volumes across `down` and `up`.
+
+## Demo traffic captures
+
+The repository's [`demo-traffic/`](../demo-traffic/README.md) folder contains
+a small synthetic protocol fixture, a real encrypted SPARC chat capture,
+and a real encrypted image-transfer capture, plus reference JSON reports.
+Copy them to running peers without restarting:
+
+```sh
+docker compose cp demo-traffic/. alice:/data/demo-traffic
+docker compose cp demo-traffic/. bob:/data/demo-traffic
+```
+
+Open **Traffic Analysis → Open Capture**, browse to `/data/demo-traffic/`,
+select a `.pcap` or `.pcapng`, and click **Analyze**. Use **Capture rate** for
+the graph. Start with `mixed-protocols.pcap`, then try `sparc-chat.pcapng` and
+`sparc-images.pcapng`. The real samples use temporary demo services on ports
+47701 and 47702, respectively; the normal chat listener uses port 47655.
 
 ## Wireshark
 

@@ -28,13 +28,14 @@ from ..storage import atomic_write
 from .jobs import JobController
 from .scrolling import CanvasScroller, scrollbar
 from .plot_view import ResultsView
-from .appearance import install, text_options, SURFACE
+from .appearance import install, text_options, SURFACE, BORDER
 from .message_lab import MessageLab
 
 
 _ALLOWED_SIZES = (64, 1024, 16384)
 _OPERATION_ROWS = 500
 _RESOURCE_ROWS = 100
+_RESULT_PANE_MIN = 100
 _HASH_MODES = {
     "Collision resistance": "collision",
     "Preimage resistance": "preimage",
@@ -309,7 +310,7 @@ class AnalysisTab:
         result_area = ttk.LabelFrame(self._plots.details, text="Latest result details", padding=8)
         result_area.grid(row=0, column=0, sticky="nsew")
         result_area.columnconfigure(0, weight=1)
-        result_area.rowconfigure(3, weight=1)
+        result_area.rowconfigure(1, weight=1)
         result_actions = ttk.Frame(result_area)
         result_actions.grid(row=0, column=0, sticky="ew")
         self._save_metrics_button = ttk.Button(
@@ -320,6 +321,19 @@ class AnalysisTab:
         self._save_button = ttk.Button(result_actions, text="Save CSV…", command=self._save_csv)
         self._save_button.grid(row=0, column=1, sticky="w", padx=(6, 0))
         self._save_button.state(["disabled"])
+        self._result_panes = tk.PanedWindow(result_area, orient=tk.VERTICAL,
+            background=BORDER, borderwidth=0, sashwidth=8, sashrelief=tk.FLAT,
+            showhandle=True, handlesize=12, opaqueresize=True)
+        self._result_panes.grid(row=1, column=0, sticky='nsew', pady=(6, 0))
+        result_table = ttk.Frame(self._result_panes)
+        detail_report = ttk.Frame(self._result_panes)
+        for pane in (result_table, detail_report):
+            pane.columnconfigure(0, weight=1)
+            pane.rowconfigure(0, weight=1)
+        self._result_panes.add(result_table, minsize=_RESULT_PANE_MIN, stretch='always')
+        self._result_panes.add(detail_report, minsize=_RESULT_PANE_MIN, stretch='always')
+        ttk.Label(result_area, text='Drag the divider to resize the table and report.',
+                  style='Muted.TLabel').grid(row=2, column=0, sticky='w', pady=(4, 0))
         default_font = self._appearance.body
         style = ttk.Style(self.widget)
         style.configure(
@@ -327,7 +341,7 @@ class AnalysisTab:
             rowheight=default_font.metrics("linespace") + 8,
         )
         self._results = ttk.Treeview(
-            result_area,
+            result_table,
             columns=("workload", "measurement", "value", "detail"),
             show="headings",
             height=8,
@@ -355,19 +369,22 @@ class AnalysisTab:
                 column, width=min_width, minwidth=min_width,
                 anchor="w", stretch=column == "detail",
             )
-        self._results.grid(row=1, column=0, sticky="ew", pady=(5, 0))
-        results_xscroll = scrollbar(result_area, orient=tk.HORIZONTAL, command=self._results.xview)
-        results_xscroll.grid(row=2, column=0, sticky="ew")
+        self._results.grid(row=0, column=0, sticky="nsew")
+        results_xscroll = scrollbar(result_table, orient=tk.HORIZONTAL, command=self._results.xview)
+        results_xscroll.grid(row=1, column=0, sticky="ew")
         self._results.configure(xscrollcommand=results_xscroll.set)
-        results_yscroll=ttk.Scrollbar(result_area,orient=tk.VERTICAL,command=self._results.yview)
-        results_yscroll.grid(row=1,column=1,sticky='ns',pady=(5,0))
+        results_yscroll=ttk.Scrollbar(result_table,orient=tk.VERTICAL,command=self._results.yview)
+        results_yscroll.grid(row=0,column=1,sticky='ns')
         self._results.configure(yscrollcommand=results_yscroll.set)
-        self._details = tk.Text(result_area, height=5, wrap=tk.WORD, state=tk.DISABLED,
+        self._details = tk.Text(detail_report, height=5, wrap=tk.WORD, state=tk.DISABLED,
                                 **text_options(self._appearance))
-        self._details.grid(row=3, column=0, sticky="nsew", pady=(6, 0))
-        detail_scroll = ttk.Scrollbar(result_area, orient=tk.VERTICAL, command=self._details.yview)
-        detail_scroll.grid(row=3, column=1, sticky="ns", pady=(6, 0))
+        self._details.grid(row=0, column=0, sticky="nsew")
+        detail_scroll = ttk.Scrollbar(detail_report, orient=tk.VERTICAL, command=self._details.yview)
+        detail_scroll.grid(row=0, column=1, sticky="ns")
         self._details.configure(yscrollcommand=detail_scroll.set)
+        for pane in (result_table, detail_report):
+            pane.bind('<Configure>', self._keep_result_panes_visible, add='+')
+            pane.bind('<Map>', self._keep_result_panes_visible, add='+')
         metrics = ttk.LabelFrame(self._plots.metrics, text="Core operation metrics", padding=8)
         metrics.grid(row=0, column=0, sticky="nsew")
         metrics.columnconfigure(0, weight=1)
@@ -467,6 +484,23 @@ class AnalysisTab:
 
     def _content_resized(self, _event=None) -> None:
         self._canvas.configure(scrollregion=self._canvas.bbox("all"))
+
+    def _keep_result_panes_visible(self, _event=None) -> None:
+        # Tk enforces sash minima while dragging, but can shrink a pane below
+        # its minimum when the entire window is resized or initially mapped.
+        if self._closed:
+            return
+        table, report = self._results.master, self._details.master
+        if not table.winfo_ismapped() or not report.winfo_ismapped():
+            return
+        table_height, report_height = table.winfo_height(), report.winfo_height()
+        if table_height + report_height < 2 * _RESULT_PANE_MIN:
+            return
+        adjustment = (max(0, _RESULT_PANE_MIN - table_height)
+                      - max(0, _RESULT_PANE_MIN - report_height))
+        if adjustment:
+            x, y = self._result_panes.sash_coord(0)
+            self._result_panes.sash_place(0, x, y + adjustment)
 
     def _select_experiment(self, _event=None):
         selected={'Diffusion / confusion':'Avalanche'}.get(self._experiment_kind.get(),self._experiment_kind.get())
@@ -936,7 +970,6 @@ class AnalysisTab:
         for row in self._results.get_children(""):
             self._results.delete(row)
         self._details_text("")
-        self._results.configure(height=1)
 
     def _details_text(self, value: str) -> None:
         self._details.configure(state=tk.NORMAL)
@@ -950,7 +983,6 @@ class AnalysisTab:
             "", tk.END,
             values=(self._display(workload), self._display(measurement), self._display(value), self._display(detail)),
         )
-        self._results.configure(height=min(3,max(1,len(self._results.get_children()))))
 
     @staticmethod
     def _display(value: object) -> str:

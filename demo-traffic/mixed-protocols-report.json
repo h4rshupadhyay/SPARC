@@ -1,0 +1,182 @@
+{
+  "bundle": {
+    "artifacts": [
+      {
+        "complete": true,
+        "kind": "report",
+        "path": "demo-traffic/mixed-protocols-report.json"
+      }
+    ],
+    "complete": true
+  },
+  "captured_bytes": 262,
+  "captured_bytes_s": "65.5",
+  "conversion": {
+    "complete": true,
+    "elapsed_ns": 478422762,
+    "metadata": {
+      "checkpoint_elapsed_ns": 473875391,
+      "checkpoint_measurement_scope": "import_prepublication_checkpoint",
+      "complete": true,
+      "elapsed_ns": 473875391,
+      "measurement_scope": "import_through_final_publication",
+      "packet_count": 5,
+      "packets_s": 10.551297018080435,
+      "source_bytes": 366
+    },
+    "output_bytes": 24576,
+    "packet_count": 5,
+    "packets_s": 10.451007763715054,
+    "source_bytes": 366,
+    "versions": {
+      "pyshark": "0.6",
+      "python": "3.10.12",
+      "tshark": "TShark (Wireshark) 4.6.6."
+    }
+  },
+  "directional_bytes": [
+    {
+      "captured_bytes": 66,
+      "dst": "2001:db8::2",
+      "dst_port": 4444,
+      "packet_count": 1,
+      "src": "2001:db8::1",
+      "src_port": 3333
+    },
+    {
+      "captured_bytes": 54,
+      "dst": "10.0.0.2",
+      "dst_port": 47655,
+      "packet_count": 1,
+      "src": "10.0.0.1",
+      "src_port": 12345
+    },
+    {
+      "captured_bytes": 54,
+      "dst": "10.0.0.1",
+      "dst_port": 12345,
+      "packet_count": 1,
+      "src": "10.0.0.2",
+      "src_port": 47655
+    },
+    {
+      "captured_bytes": 46,
+      "dst": "10.0.0.2",
+      "dst_port": 2222,
+      "packet_count": 1,
+      "src": "10.0.0.1",
+      "src_port": 1111
+    },
+    {
+      "captured_bytes": 42,
+      "dst": null,
+      "dst_port": null,
+      "packet_count": 1,
+      "src": null,
+      "src_port": null
+    }
+  ],
+  "duration_s": "4.000000000",
+  "metadata": {
+    "artifact_retained": false,
+    "capture_rate_bins": {
+      "available": true,
+      "bytes_s": [
+        "54",
+        "54",
+        "46",
+        "42",
+        "66"
+      ],
+      "captured_bytes": [
+        54,
+        54,
+        46,
+        42,
+        66
+      ],
+      "definition": "Captured bytes divided by nominal bin width; epoch-aligned bins. Width doubles when needed to retain at most 200 bins; first/final bins may be partial. This is not application plaintext goodput or the first-to-last aggregate rate.",
+      "offsets_s": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "origin_timestamp": "1",
+      "reason": "",
+      "width_s": "1"
+    },
+    "complete": true,
+    "conversion": {
+      "complete": true,
+      "elapsed_ns": 473875391,
+      "measurement_scope": "import_prepublication_checkpoint",
+      "packet_count": 5,
+      "packets_s": 10.551297018080435,
+      "source_bytes": 366
+    },
+    "definitions": {
+      "captured_bytes_s": "Included captured frame bytes divided by first-to-last included interval",
+      "directional_grouping": "ordered source/destination address and port tuple; NULL is preserved",
+      "index": "A query index, not a lossless capture replacement",
+      "protocol_ordering": "count descending, binary protocol text ascending",
+      "rate_precision": "Decimal precision 50 with ROUND_HALF_EVEN; no float conversion",
+      "retransmissions": "Dissector indications, not end-to-end loss or attack proof",
+      "tcp_endpoint_selection": "first included packet by packet number; both directions are grouped",
+      "timestamps": "Exact source epoch text",
+      "unavailable_intervals": "duration and captured bytes per second are unavailable below two packets; rate is also unavailable for nonpositive duration"
+    },
+    "display_filter": null,
+    "evidence_type": "unspecified",
+    "group_totals": {
+      "directional_bytes": 5,
+      "protocol_counts": 4,
+      "tcp_conversations": 1
+    },
+    "measurement_scope": "analysis_temporary_index",
+    "packet_count": 5,
+    "presentation_limit": 100,
+    "schema_version": 1,
+    "source_bytes": 366,
+    "source_name": "mixed-protocols.pcap",
+    "source_sha256": "bce1ddb3889550c41193e4cec7486f40547518c3f9840ca6fb1ba58332219505",
+    "truncated": {
+      "directional_bytes": false,
+      "protocol_counts": false,
+      "tcp_conversations": false
+    },
+    "versions": {
+      "pyshark": "0.6",
+      "python": "3.10.12",
+      "tshark": "TShark (Wireshark) 4.6.6."
+    }
+  },
+  "packet_count": 5,
+  "packet_size_distribution": {
+    "0-63": 4,
+    "1024-1518": 0,
+    "128-511": 0,
+    "1519+": 0,
+    "512-1023": 0,
+    "64-127": 1
+  },
+  "protocol_counts": {
+    "ARP": 1,
+    "DATA": 1,
+    "ENIP": 1,
+    "TCP": 2
+  },
+  "retransmission_indications": 0,
+  "tcp_conversations": [
+    {
+      "captured_bytes": 108,
+      "dst": "10.0.0.2",
+      "dst_port": 47655,
+      "packet_count": 2,
+      "src": "10.0.0.1",
+      "src_port": 12345,
+      "tcp_stream": 0
+    }
+  ]
+}

@@ -12,6 +12,8 @@ audit.jsonl
 audit-checkpoint.json
 *.pcap
 *.pcapng
+!demo-traffic/*.pcap
+!demo-traffic/*.pcapng
 *.sqlite
 *.db
 *.csv

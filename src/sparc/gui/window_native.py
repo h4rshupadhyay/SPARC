@@ -5,6 +5,122 @@ import ctypes.util
 import tkinter as tk
 
 
+class _MessageData(ctypes.Union):
+    _fields_ = [('bytes', ctypes.c_char * 20), ('shorts', ctypes.c_short * 10),
+                ('longs', ctypes.c_long * 5)]
+
+
+class _ClientMessage(ctypes.Structure):
+    _fields_ = [('type', ctypes.c_int), ('serial', ctypes.c_ulong),
+                ('send_event', ctypes.c_int), ('display', ctypes.c_void_p),
+                ('window', ctypes.c_ulong), ('message_type', ctypes.c_ulong),
+                ('format', ctypes.c_int), ('data', _MessageData)]
+
+
+class _XEvent(ctypes.Union):
+    _fields_ = [('message', _ClientMessage), ('padding', ctypes.c_long * 24)]
+
+
+def begin_move(window, x_root: int, y_root: int) -> bool:
+    """Let an X11 window manager own dragging, including its snap preview.
+
+    Return False when native moving is unavailable so the caller can retain
+    manual movement. Never replace a modal dialog's existing Tk grab.
+    """
+    try:
+        if (window.tk.call('tk', 'windowingsystem') == 'x11'
+                and window.winfo_ismapped() and not window.overrideredirect()
+                and window.grab_current() is None):
+            return _x11_move(window, x_root, y_root, 8)
+    except (OSError, AttributeError, tk.TclError):
+        pass
+    return False
+
+
+def cancel_move(window) -> None:
+    """End a pending WM move if Tk receives the release before the WM does."""
+    try:
+        if window.tk.call('tk', 'windowingsystem') == 'x11':
+            _x11_move(window, 0, 0, 11)
+    except (OSError, AttributeError, tk.TclError):
+        pass
+
+
+def _x11_move(window, x_root, y_root, direction):
+    library = ctypes.util.find_library('X11')
+    if not library:
+        return False
+    xlib = ctypes.CDLL(library)
+    pointer, xid = ctypes.c_void_p, ctypes.c_ulong
+    byte_pointer = ctypes.POINTER(ctypes.c_ubyte)
+    xlib.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    xlib.XOpenDisplay.restype = pointer
+    xlib.XCloseDisplay.argtypes = [pointer]
+    xlib.XQueryTree.argtypes = [pointer, xid, ctypes.POINTER(xid), ctypes.POINTER(xid),
+                               ctypes.POINTER(ctypes.POINTER(xid)), ctypes.POINTER(ctypes.c_uint)]
+    xlib.XQueryTree.restype = ctypes.c_int
+    xlib.XFree.argtypes = [pointer]
+    xlib.XInternAtom.argtypes = [pointer, ctypes.c_char_p, ctypes.c_int]
+    xlib.XInternAtom.restype = xid
+    xlib.XGetWindowProperty.argtypes = [pointer, xid, xid, ctypes.c_long, ctypes.c_long,
+                                      ctypes.c_int, xid, ctypes.POINTER(xid),
+                                      ctypes.POINTER(ctypes.c_int), ctypes.POINTER(xid),
+                                      ctypes.POINTER(xid), ctypes.POINTER(byte_pointer)]
+    xlib.XGetWindowProperty.restype = ctypes.c_int
+    xlib.XSendEvent.argtypes = [pointer, xid, ctypes.c_int, ctypes.c_long,
+                               ctypes.POINTER(_XEvent)]
+    xlib.XSendEvent.restype = ctypes.c_int
+    xlib.XFlush.argtypes = [pointer]
+    display = xlib.XOpenDisplay(window.winfo_screen().encode())
+    if not display:
+        return False
+    try:
+        root, parent = xid(), xid()
+        children = ctypes.POINTER(xid)()
+        count = ctypes.c_uint()
+        queried = xlib.XQueryTree(display, window.winfo_id(), ctypes.byref(root),
+                                 ctypes.byref(parent), ctypes.byref(children), ctypes.byref(count))
+        if children:
+            xlib.XFree(children)
+        if not queried or parent.value in (0, root.value):
+            return False
+        atom = xlib.XInternAtom(display, b'_NET_WM_MOVERESIZE', 0)
+        supported = xlib.XInternAtom(display, b'_NET_SUPPORTED', 0)
+        actual_type, items, remaining = xid(), xid(), xid()
+        actual_format = ctypes.c_int()
+        data = byte_pointer()
+        try:
+            result = xlib.XGetWindowProperty(display, root, supported, 0, 1024, 0, 4,
+                                             ctypes.byref(actual_type), ctypes.byref(actual_format),
+                                             ctypes.byref(items), ctypes.byref(remaining), ctypes.byref(data))
+            if (result != 0 or actual_type.value != 4 or actual_format.value != 32 or not data
+                    or atom not in ctypes.cast(data, ctypes.POINTER(xid))[:items.value]):
+                return False
+        finally:
+            if data:
+                xlib.XFree(data)
+        if direction == 8:
+            # Tk's X connection owns the implicit ButtonPress grab. Release
+            # through Tk, not this separate X connection, before notifying WM.
+            try:
+                window.grab_set_global()
+            finally:
+                window.grab_release()
+            window.winfo_pointerxy()  # round-trip flushes Tk's ungrab first
+        event = _XEvent()
+        event.message.type = 33  # ClientMessage
+        event.message.display = display
+        event.message.window = parent.value  # Tk's managed outer wrapper
+        event.message.message_type = atom
+        event.message.format = 32
+        event.message.data.longs[:] = (x_root, y_root, direction, 1, 1)
+        sent = xlib.XSendEvent(display, root, 0, (1 << 20) | (1 << 19), ctypes.byref(event))
+        xlib.XFlush(display)
+        return bool(sent)
+    finally:
+        xlib.XCloseDisplay(display)
+
+
 def hide_decorations(window) -> bool:
     """Keep WM management when the platform can hide only the decoration.
 

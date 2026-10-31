@@ -1,6 +1,7 @@
 """Application-owned window chrome, tested against real Tk widgets."""
 
 from types import SimpleNamespace
+import os
 import re
 import shutil
 import subprocess
@@ -200,3 +201,79 @@ def test_missing_native_adapter_keeps_frameless_close_and_cleanup(window, monkey
     chrome.close_button.invoke()
     assert calls == ['close']
     assert window.tk.splitlist(window.tk.call('after', 'info')) == ()
+
+
+def test_native_move_preserves_a_dialogs_modal_grab(window):
+    from sparc.gui.window_native import begin_move
+
+    dialog = tk.Toplevel(window)
+    dialog.geometry('300x150+300+300')
+    pump(window)
+    dialog.grab_set()
+    try:
+        assert not begin_move(dialog, 320, 320)
+        assert window.grab_current() is dialog
+        assert dialog.grab_status() == 'local'
+    finally:
+        dialog.grab_release()
+        dialog.destroy()
+
+
+@pytest.mark.parametrize('side', ['left', 'right'])
+@pytest.mark.skipif(os.environ.get('SPARC_DESKTOP_TESTS') != '1',
+                    reason='opt-in test moves the real desktop pointer')
+def test_header_drag_uses_desktop_half_screen_snapping(window, side):
+    """Catch direct geometry dragging that bypasses the WM's tiling operation.
+
+    Run on a single-monitor X11 desktop with edge tiling enabled:
+    SPARC_DESKTOP_TESTS=1 python -m pytest tests/gui/test_window_chrome.py -k half_screen
+    """
+    if window.tk.call('tk', 'windowingsystem') != 'x11':
+        pytest.skip('requires an X11 desktop')
+    if not all(shutil.which(tool) for tool in ('xdotool', 'xprop')):
+        pytest.skip('requires xdotool and xprop')
+
+    def desktop(*args):
+        return subprocess.run(['xdotool', *map(str, args)], check=True,
+                              capture_output=True, text=True).stdout
+
+    properties = subprocess.run(['xprop', '-root', '_NET_WORKAREA'], check=True,
+                                capture_output=True, text=True).stdout
+    if '=' not in properties:
+        pytest.skip('requires a desktop window manager')
+    x, y, width, height = map(int, re.findall(r'-?\d+', properties.split('=', 1)[1])[:4])
+    minimum_w, minimum_h = window.minsize()
+    if width // 2 < minimum_w or height < minimum_h:
+        pytest.skip('desktop cannot fit two minimum-size SPARC windows')
+    pointer = desktop('getmouselocation', '--shell')
+    original_x = int(re.search(r'^X=(\d+)', pointer, re.M)[1])
+    original_y = int(re.search(r'^Y=(\d+)', pointer, re.M)[1])
+    window.geometry('900x700+200+200')
+    _, chrome = shell(window)
+    window.lift()
+    window.focus_force()
+    pump(window)
+    try:
+        start_x, start_y = window.winfo_rootx() + 30, window.winfo_rooty() + 20
+        desktop('mousemove', '--sync', start_x, start_y, 'mousedown', '1')
+        pump(window)
+        desktop('mousemove', '--sync', start_x + 80, start_y + 20)
+        pump(window)
+        edge_x = x + 1 if side == 'left' else x + width - 1
+        desktop('mousemove', '--sync', edge_x, y + height // 2)
+        deadline = time.monotonic() + .5
+        while time.monotonic() < deadline:
+            window.update()
+            time.sleep(.01)
+        desktop('mouseup', '1')
+        expected_x = x if side == 'left' else x + width // 2
+        pump(window, lambda: abs(window.winfo_width() * 2 - width) <= 4
+             and abs(window.winfo_x() - expected_x) <= 4)
+        assert abs(window.winfo_height() - height) <= 4
+        assert abs(window.winfo_y() - y) <= 4
+        assert window.grab_current() is None
+        assert not window.overrideredirect()
+    finally:
+        desktop('mouseup', '1')
+        desktop('mousemove', '--sync', original_x, original_y)
+        chrome.dispose()

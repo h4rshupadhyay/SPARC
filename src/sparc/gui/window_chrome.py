@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from . import appearance as colors
-from .window_native import hide_decorations
+from .window_native import begin_move, cancel_move, hide_decorations
 
 
 class WindowChrome:
@@ -19,6 +19,8 @@ class WindowChrome:
         self.notebook = notebook
         self._bindings = []
         self._drag_origin = None
+        self._native_drag = False
+        self._native_drag_attempted = False
         self._resize_origin = None
         self._maximized = False
         self._restore_geometry = None
@@ -126,20 +128,34 @@ class WindowChrome:
 
     def _start_drag(self, event):
         self._drag_origin = None
+        self._native_drag = False
+        self._native_drag_attempted = False
         if not self._is_drag_area(event):
-            return
-        if self._is_maximized():
             return
         self._drag_origin = (event.x_root, event.y_root, self.window.winfo_x(), self.window.winfo_y())
 
     def _drag(self, event):
         if self._drag_origin:
             px, py, x, y = self._drag_origin
+            # Wait for motion so a normal double-click still toggles maximize.
+            if (not self._fallback and not self._native_drag_attempted
+                    and getattr(event, 'state', 0) & 0x100
+                    and max(abs(event.x_root - px), abs(event.y_root - py)) >= 4):
+                self._native_drag_attempted = True
+                if begin_move(self.window, px, py):
+                    self._native_drag = True
+                    self._drag_origin = None
+                    return 'break'
+            if self._is_maximized():
+                return
             # A leading '+' makes even negative coordinates absolute. Tk's
             # bare '-10' means an offset from the opposite screen edge.
             self.window.geometry(f'+{x + event.x_root - px}+{y + event.y_root - py}')
 
     def _end_gesture(self, event):
+        if self._native_drag:
+            cancel_move(self.window)
+            self._native_drag = False
         self._drag_origin = self._resize_origin = None
 
     def _double_click(self, event):

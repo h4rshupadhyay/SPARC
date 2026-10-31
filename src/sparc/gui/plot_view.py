@@ -21,7 +21,9 @@ class PlotView(ttk.Frame):
     """One latest run; select a panel on screen and export every panel together."""
 
     def __init__(self, parent):
-        super().__init__(parent, padding=12)
+        # Leave the chart enough width even in the minimum 800 px window;
+        # controls retain their normal inset independently of the canvas.
+        super().__init__(parent, padding=(4, 12))
         self.columnconfigure(0, weight=1)
         self.rowconfigure(2, weight=1)
         # Some desktop font configurations scale pixel fonts again. Calibrate
@@ -30,7 +32,7 @@ class PlotView(ttk.Frame):
         self.operation = tk.StringVar(master=self, value='Encrypt/decrypt')
         self.chart = tk.StringVar(master=self)
         controls = ttk.Frame(self)
-        controls.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 8))
+        controls.grid(row=0, column=0, columnspan=2, sticky='ew', padx=8, pady=(0, 8))
         controls.columnconfigure(1, weight=1)
         ttk.Label(controls, text='Chart', font=self._chart_font).grid(row=0, column=0, padx=(0, 8))
         self._chart_choice = ttk.Combobox(controls, textvariable=self.chart, state='disabled', width=28, font=self._chart_font)
@@ -39,7 +41,7 @@ class PlotView(ttk.Frame):
         self._export = ttk.Button(controls, text='Export graphs SVG…', command=self.export)
         self._export.grid(row=0, column=2, padx=(12, 0))
         self._operations = ttk.Frame(self)
-        self._operations.grid(row=1, column=0, sticky='w', pady=(0, 8))
+        self._operations.grid(row=1, column=0, sticky='w', padx=8, pady=(0, 8))
         ttk.Label(self._operations, text='Operations', font=self._chart_font).pack(side='left', padx=(0, 8))
         self._choice = ttk.Combobox(self._operations, textvariable=self.operation,
                                     values=tuple(_CHOICES), state='readonly', width=20, font=self._chart_font)
@@ -47,7 +49,7 @@ class PlotView(ttk.Frame):
         self._choice.bind('<<ComboboxSelected>>', lambda _event: self.refresh())
         self.conditional=tk.BooleanVar(master=self,value=False)
         self._conditional_controls=ttk.Frame(self)
-        self._conditional_controls.grid(row=1,column=0,sticky='w',pady=(0,8))
+        self._conditional_controls.grid(row=1,column=0,sticky='w',padx=8,pady=(0,8))
         ttk.Checkbutton(self._conditional_controls,text='Include input/output-bit conditional views',
             variable=self.conditional,command=self.refresh).pack(side='left')
         self.canvas = tk.Canvas(self, background=SURFACE, highlightbackground=BORDER,
@@ -57,6 +59,7 @@ class PlotView(ttk.Frame):
         scrollbar.grid(row=2, column=1, sticky='ns')
         self.canvas.configure(yscrollcommand=scrollbar.set)
         self.canvas.bind('<Configure>', lambda _event: self.schedule_draw())
+        self.bind('<Configure>', lambda _event: self.schedule_draw())
         self.canvas.bind('<Motion>',self._matrix_hint)
         for event in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
             self.canvas.bind(event, self._scroll)
@@ -65,12 +68,12 @@ class PlotView(ttk.Frame):
         self.status = tk.StringVar(master=self, value='Run an experiment to see measured graphs here.')
         self._status_label = ttk.Label(self, textvariable=self.status, wraplength=650, font=self._chart_font)
         self._legend_frame=ttk.Frame(self)
-        self._legend_frame.grid(row=3,column=0,columnspan=2,sticky='ew',pady=(6,0))
+        self._legend_frame.grid(row=3,column=0,columnspan=2,sticky='ew',padx=8,pady=(6,0))
         self._legend_items=[]
         self.scope=tk.StringVar(master=self)
         self._scope_label=ttk.Label(self,textvariable=self.scope,wraplength=650,font=install(self).small)
-        self._scope_label.grid(row=4,column=0,columnspan=2,sticky='ew',pady=(4,0))
-        self._status_label.grid(row=5, column=0, columnspan=2, sticky='ew', pady=(4, 0))
+        self._scope_label.grid(row=4,column=0,columnspan=2,sticky='ew',padx=8,pady=(4,0))
+        self._status_label.grid(row=5, column=0, columnspan=2, sticky='ew', padx=8, pady=(4, 0))
         self.plots = []
         self._result = None
         self._external_plots = None
@@ -138,6 +141,9 @@ class PlotView(ttk.Frame):
         if not self._closed and self._draw_id is None:
             self._draw_id = self.after_idle(self.draw)
 
+    def _chart_size(self):
+        return max(380, self.canvas.winfo_width()), max(50, self.canvas.winfo_height() - 126)
+
     def draw(self):
         if self._draw_id is not None:
             self.after_cancel(self._draw_id)
@@ -145,16 +151,13 @@ class PlotView(ttk.Frame):
         if self._closed:
             return
         self.canvas.delete('all')
-        available = max(380, self.canvas.winfo_width())
-        width = min(1500, available)
-        offset = (available - width) / 2
+        width, chart_height = self._chart_size()
         self._status_label.configure(wraplength=max(240, self.winfo_width() - 32))
         self._scope_label.configure(wraplength=max(240,self.winfo_width()-32))
         selected = next((plot for plot in self.plots if plot.title == self.chart.get()), None)
-        chart_height = max(50, min(500, self.canvas.winfo_height()-126))
         line_height = self._chart_font.metrics('linespace') + 4
         height = 126+chart_height if selected else 100
-        self.canvas.configure(scrollregion=(0, 0, available, height))
+        self.canvas.configure(scrollregion=(0, 0, width, height))
         self._set_legend(selected)
         if selected is None:
             self.canvas.create_text(24, 36, text='Run an experiment to see its graphs.',
@@ -163,7 +166,7 @@ class PlotView(ttk.Frame):
         for mark in drawing(selected, width, height, chart_height=chart_height,
                             measure=self._chart_font.measure, line_height=line_height,include_footer=False):
             color = chart_color(mark.color)
-            xy = tuple(value + (offset if i % 2 == 0 else 0) for i, value in enumerate(mark.xy))
+            xy = mark.xy
             if mark.kind == 'text':
                 # Pixel fonts match the shared geometry and SVG at every Tk DPI.
                 self.canvas.create_text(*xy, text=mark.text, fill=color, anchor=mark.anchor,
@@ -226,10 +229,8 @@ class PlotView(ttk.Frame):
     def _matrix_hint(self,event):
         plot=next((plot for plot in self.plots if plot.title==self.chart.get()),None)
         if plot is None or not plot.matrix: return
-        width=min(1500,max(380,self.canvas.winfo_width()))
-        offset=(max(380,self.canvas.winfo_width())-width)/2
-        height=max(50,min(500,self.canvas.winfo_height()-126))
-        x=self.canvas.canvasx(event.x)-offset; y=self.canvas.canvasy(event.y)
+        width,height=self._chart_size()
+        x=self.canvas.canvasx(event.x); y=self.canvas.canvasy(event.y)
         if 94<=x<width-32 and 64<=y<64+height:
             column=min(127,int((x-94)/(width-126)*128))
             row=min(len(plot.matrix)-1,int((y-64)/height*len(plot.matrix)))
